@@ -40,7 +40,7 @@ Once you have the executable, you can either:
  ./PacManCTF -mode server & ./PacManCTF -mode client & ./PacManCTF -mode client
 ```
 
-The game is **server authoritative.** All data that is not supposed to be seen by the Client does not exist on the Client.
+The game is **server authoritative.** All data that is not supposed to be seen by the Client does not exist on the Client. Actions constructed on the client are sent to the server for execution and played back on the Client.
 
 The game is **fully synchronous**. The server waits for both clients to send in their actions before stepping the environment.
 
