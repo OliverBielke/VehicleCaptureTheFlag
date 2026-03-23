@@ -1,0 +1,91 @@
+syntax = "proto3";
+
+package pacman;
+option csharp_namespace = "PacMan.Network.Generated";
+
+message InitializeRequest {
+  string client_id = 1;
+}
+
+message StepRequest {
+  string client_id = 1;
+  repeated ProtoPacManAction actions = 2;
+}
+
+message GameState {
+  float time = 1;
+  repeated ProtoEdible food = 2;
+  repeated ProtoEdible capsules = 3;
+  repeated ProtoPacManState agents = 4;
+  string map_name = 5;
+  string client_id = 6;
+  int32 controlled_agent_index = 7;
+  float fixed_delta_time = 8;
+}
+
+message ProtoPacManAction {
+  ProtoVector2 acceleration = 1;
+  int32 index = 2;
+}
+
+message ProtoPacManState {
+  ProtoTransform transform = 1;
+  int32 food_carried = 2;
+  bool is_scared = 3;
+  bool is_ghost = 4;
+  bool is_powered = 5;
+  double scared_remaining = 6;
+  ProtoVector2 direction = 7;
+  float magnitude = 8;
+  ProtoVector3 velocity = 9;
+  ProtoVector3 angular_velocity = 10;
+  string tag = 11;
+  ProtoPacManObservations observations = 12;
+  int32 server_index = 13;
+}
+
+message ProtoPacManObservations {
+  repeated ProtoPacManObservation observations = 1;
+  int32 index = 2;
+  float observation_fixed_time = 3;
+  int32 agent_server_index = 4;
+}
+
+message ProtoPacManObservation {
+  ProtoVector3 position = 1;
+  ProtoVector3 velocity = 2;
+  bool is_ghost = 3;
+  bool visible = 4;
+  float reading_dispersion = 5;
+  bool has_food = 6;
+  int32 server_index = 7;
+}
+
+message ProtoEdible {
+  ProtoTransform transform = 1;
+  bool is_capsule = 2;
+  bool is_active = 3;
+}
+
+message ProtoTransform {
+  ProtoVector3 position = 1;
+  ProtoQuaternion rotation = 2;
+}
+
+message ProtoVector2 {
+  float x = 1;
+  float y = 2;
+}
+
+message ProtoVector3 {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+}
+
+message ProtoQuaternion {
+  float x = 1;
+  float y = 2;
+  float z = 3;
+  float w = 4;
+}
