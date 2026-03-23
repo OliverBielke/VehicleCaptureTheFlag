@@ -30,6 +30,7 @@ Or alternatively from the promt, with the following command (assuming an executa
 ```
 ./PacManCTF -mode local
 ```
+If you have a Mac, check instructions for running an executable from the terminal at the bottom of this page.
 
 ## Client / Server
 
@@ -44,7 +45,7 @@ Once you have the executable, you can either:
 
 The game is **server authoritative.** All data that is not supposed to be seen by the Client does not exist on the Client. Actions constructed on the client are sent to the server for execution and played back on the Client.
 
-The game is **fully synchronous**. The server waits for both clients to send in their actions before stepping the environment.
+The game is **fully synchronous**. The server waits for both clients to send in their actions before stepping the environment. Thus if your executable never sends an action the game will not progress. This will not be a way to escape losing, so avoid it. Details on available computation time can be found on Canvas.
 
 It is suggested you test your algorithms out in both modes.
 Note that the **final competitions will be in Client/Server mode**, to enable you to share built executables and run games against other teams without having to manage their code.
@@ -116,3 +117,18 @@ Do not forget to restart your editor after installing new support modules.
 NB! On some platforms you might need to delete your old build artifacts if you wish to build an artifact into the same folder as a previous one to see any changes.
 
 Once the executable is built, you can run it directly  as any other application using the commands in the sections above.
+
+# If you have a Mac
+To run a Unity executable from the terminal on a Mac, you have to write a bit more. In macOS, an app is actually a folder, so assuming myApp is the name of the executable, instead of writing
+
+```
+ ./myApp 
+```
+you write
+```
+ ./myApp.app/Contents/MacOS/PacManCTF 
+```
+and add flags and arguments after as described above. Note that you can access the folders inside the executable using the `ls` command from the terminal as usual. On a Mac, the longer example above, to start both clients and server, would be:
+```
+./myApp.app/Contents/MacOS/PacManCTF -mode server & ./myApp.app/Contents/MacOS/PacManCTF -mode client & ./myApp.app/Contents/MacOS/PacManCTF -mode client
+```
