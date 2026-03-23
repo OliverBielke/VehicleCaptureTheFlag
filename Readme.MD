@@ -1,11 +1,11 @@
 ﻿# PacMan Capture-The-Flag assignment
 
-Inspired by UC Berkeley's Python environment: http://ai.berkeley.edu/contest.html
+Inspired by UC Berkeley's Python environment: https://inst.eecs.berkeley.edu/~cs188/fa24/projects/
 
-The PacMan environment is built using a custom synchronized HTTP server, on top of Protobuf messages. 
-If you wish to ignore most of that, you can build your AI code into the [PacManAI](Assets/Scripts/PacManAI.cs) class, as in the previous assignments.
-However, part of this assignment is competing against other teams.
-For managing that, we have provided a networked version of the game as well.
+The Capture-the-flag game is played by two opposing teams, the red and the blue (see images below). In order for your team to be able to compete against other teams, without sharing source code and thereby exposing your brilliant code too early, we utilize the unity features of creating executables.
+
+You will build your AI code into the [PacManAI](Assets/Scripts/PacManAI.cs) class, as in the previous assignments.
+However, to manage the competitions we have provided a networked version of the game as well, using a custom synchronized HTTP server, on top of Protobuf messages.
 
 We strongly suggest you test out your solutions in both **Local** and **Client/Server** mode **_AS EARLY AS POSSIBLE_**.
 Otherwise you might run into unexpected issues during competitions.
@@ -21,10 +21,12 @@ It is possible to run the environment in one three ways:
 
 The local mode can be a convenient mode for testing changes quickly.
 
-In the local mode, everything is run on one instance of the environment - As in previous assignments.
-This can be started by running the environment with "Mode: Local" in PacManManagerModeSelector or by disabling the mode selector entirely.
+In the local mode, everything is run on one instance of the environment - as in previous assignments.
+This is done by starting the unity editor as usual, picking the PacManNormal scene, and pressing play. To test things out you can control both sides using wasd and arrow keys.
 
-Or alternatively with the following command (assuming an executable named "PacManCTF"):
+Doing this you are running the environment with "Mode: Local" in PacManManagerModeSelector or by disabling the mode selector entirely.
+
+Or alternatively from the promt, with the following command (assuming an executable named "PacManCTF"):
 ```
 ./PacManCTF -mode local
 ```
@@ -114,4 +116,3 @@ Do not forget to restart your editor after installing new support modules.
 NB! On some platforms you might need to delete your old build artifacts if you wish to build an artifact into the same folder as a previous one to see any changes.
 
 Once the executable is built, you can run it directly  as any other application using the commands in the sections above.
-
