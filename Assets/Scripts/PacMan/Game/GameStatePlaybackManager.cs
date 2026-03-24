@@ -47,14 +47,17 @@ namespace PacMan.Local
                 return;
             }
 
-            var replayPath = Application.streamingAssetsPath + "/Text/" + saveFile + ".pb";
-            _replayStream = File.OpenRead(replayPath);
-
-            var replayState = ReadNextState();
-            if (replayState != null)
+            if (CurrentMode == ManagerMode.Replay)
             {
-                ConfigureRecordedFixedTimeStep(replayState);
-                waiting = StartCoroutine(WaitReplay(replayState));
+                var replayPath = Application.streamingAssetsPath + "/Text/" + saveFile + ".pb";
+                _replayStream = File.OpenRead(replayPath);
+
+                var replayState = ReadNextState();
+                if (replayState != null)
+                {
+                    ConfigureRecordedFixedTimeStep(replayState);
+                    waiting = StartCoroutine(WaitReplay(replayState));
+                }
             }
         }
 
@@ -107,7 +110,10 @@ namespace PacMan.Local
                 return;
             }
 
-            PlaybackFromFile();
+            if (CurrentMode == ManagerMode.Replay)
+            {
+                PlaybackFromFile();
+            }
         }
 
         private void UpdateClientNetwork()

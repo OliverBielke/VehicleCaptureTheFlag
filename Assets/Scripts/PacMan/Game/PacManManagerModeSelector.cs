@@ -9,6 +9,7 @@ namespace PacMan.Game
         Local,
         Server,
         Client,
+        Replay
     }
 
     public class PacManManagerModeSelector : MonoBehaviour
@@ -30,7 +31,7 @@ namespace PacMan.Game
 
         private void ConfigureManagerObjects()
         {
-            var usePlaybackManager = mode == ManagerMode.Client;
+            var usePlaybackManager = mode == ManagerMode.Client || mode == ManagerMode.Replay;
             var shareGameObject = playback_manager != null &&
                                   game_manager != null &&
                                   playback_manager.gameObject == game_manager.gameObject;
