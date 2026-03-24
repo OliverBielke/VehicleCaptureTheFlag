@@ -61,11 +61,11 @@ namespace PacMan.Editor
 
             var playbackManager = (GameStatePlaybackManager)target;
             if (_saveOptions.Length > 0 &&
-                !string.IsNullOrWhiteSpace(playbackManager.saveFile) &&
-                Array.IndexOf(_saveOptions, playbackManager.saveFile) < 0)
+                !string.IsNullOrWhiteSpace(playbackManager.playbackFile) &&
+                Array.IndexOf(_saveOptions, playbackManager.playbackFile) < 0)
             {
                 EditorGUILayout.HelpBox(
-                    $"Current save file '{playbackManager.saveFile}' was not found in Assets/StreamingAssets/Text.",
+                    $"Current save file '{playbackManager.playbackFile}' was not found in Assets/StreamingAssets/Text.",
                     MessageType.Warning);
             }
         }
@@ -73,7 +73,7 @@ namespace PacMan.Editor
         private void AssignSelectedSave(GameStatePlaybackManager playbackManager)
         {
             Undo.RecordObject(playbackManager, "Select replay save file");
-            playbackManager.saveFile = _saveOptions[_selectedIndex];
+            playbackManager.playbackFile = _saveOptions[_selectedIndex];
             SyncSelectionWithCurrentValue();
             MarkPlaybackManagerDirty(playbackManager);
         }
@@ -104,7 +104,7 @@ namespace PacMan.Editor
             }
 
             var playbackManager = (GameStatePlaybackManager)target;
-            var matchingIndex = Array.IndexOf(_saveOptions, playbackManager.saveFile);
+            var matchingIndex = Array.IndexOf(_saveOptions, playbackManager.playbackFile);
             _selectedIndex = matchingIndex >= 0 ? matchingIndex : 0;
         }
 

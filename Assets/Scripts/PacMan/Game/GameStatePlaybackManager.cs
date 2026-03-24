@@ -14,7 +14,7 @@ namespace PacMan.Local
 {
     public class GameStatePlaybackManager : PacManGameManager
     {
-        public string saveFile;
+        public string playbackFile;
 
         private FileStream _replayStream;
         private Coroutine waiting;
@@ -49,7 +49,7 @@ namespace PacMan.Local
 
             if (CurrentMode == ManagerMode.Replay)
             {
-                var replayPath = Application.streamingAssetsPath + "/Text/" + saveFile + ".pb";
+                var replayPath = Application.streamingAssetsPath + "/Text/" + playbackFile + ".pb";
                 _replayStream = File.OpenRead(replayPath);
 
                 var replayState = ReadNextState();
