@@ -34,7 +34,8 @@ namespace PacMan
         private PacManGameManager ResolveActiveManager()
         {
             var playbackManager = _modeSelector != null ? _modeSelector.playback_manager : _playbackManager;
-            if (playbackManager != null && playbackManager.ActiveMode == ManagerMode.Client)
+            if (playbackManager != null &&
+                (playbackManager.ActiveMode == ManagerMode.Client || playbackManager.ActiveMode == ManagerMode.Replay))
             {
                 return playbackManager;
             }
@@ -49,7 +50,9 @@ namespace PacMan
             style.normal.textColor = Color.white;
 
             var requestEntries = gameManager.GetNetworkRequestDisplayEntries()?.ToList() ?? new List<NetworkRequestDisplayEntry>();
-            if (gameManager.ActiveMode == ManagerMode.Server || gameManager.ActiveMode == ManagerMode.Client)
+            if (gameManager.ActiveMode == ManagerMode.Server ||
+                gameManager.ActiveMode == ManagerMode.Client ||
+                gameManager.ActiveMode == ManagerMode.Replay)
             {
                 GUILayout.Label("Mode: " + gameManager.ActiveMode, style);
             }
