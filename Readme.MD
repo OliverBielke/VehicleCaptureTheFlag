@@ -53,12 +53,17 @@ Note that the **final competitions will be in Client/Server mode**, to enable yo
 
 ## Replay
 
+### Saving a replay
 To store a replay, enable the GameRecorder component and set a file name or enable from CLI (see below).
 
 ![alt text](Recorder.png)
 
-To play back a replay, **Disable the GameMode (PacManManagerModeSelector) object** and **enable the ReplayManager (GameStatePlaybackManager)**. 
-Select a file and start the game in the editor. 
+### Playing a replay
+
+![alt text](ReplayFileSelect.png)
+![alt text](ReplayMode.png)
+
+To play back a replay, in the editor, **Change the game mode to Replay** and **select a file under the ReplayManager**. Then start the game in the editor. 
 
 
 
