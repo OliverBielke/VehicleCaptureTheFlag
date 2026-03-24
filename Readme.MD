@@ -54,9 +54,8 @@ Note that the **final competitions will be in Client/Server mode**, to enable yo
 ## Replay
 
 ### Saving a replay
-To store a replay, enable the GameRecorder component and set a file name or enable from CLI (see below).
-
 ![alt text](Recorder.png)
+To store a replay, enable the GameRecorder component and set a file name or enable from CLI (see below).
 
 ### Playing a replay
 
