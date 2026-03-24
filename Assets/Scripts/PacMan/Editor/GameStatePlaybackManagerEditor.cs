@@ -45,10 +45,11 @@ namespace PacMan.Editor
             }
             else
             {
-                _selectedIndex = EditorGUILayout.Popup("Replay save", Mathf.Clamp(_selectedIndex, 0, _saveOptions.Length - 1), _saveOptions);
-
-                if (GUILayout.Button("Set save file"))
+                EditorGUI.BeginChangeCheck();
+                var selectedIndex = EditorGUILayout.Popup("Replay save", Mathf.Clamp(_selectedIndex, 0, _saveOptions.Length - 1), _saveOptions);
+                if (EditorGUI.EndChangeCheck())
                 {
+                    _selectedIndex = selectedIndex;
                     AssignSelectedSave((GameStatePlaybackManager)target);
                 }
             }
