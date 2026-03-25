@@ -344,7 +344,7 @@ namespace PacMan.Game
             redFood = foodList.FindAll(food => TeamAssignmentUtil.CheckTeam(food) == Team.Red && food.activeSelf).Count;
             blueScore = blueFood - redFood;
             redScore = redFood - blueFood;
-            finished = matchTime > matchLength;
+            finished = matchLength != 0 && matchTime > matchLength;
         }
 
         protected void AdvanceSimulationClock(float deltaTime)
