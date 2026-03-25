@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using PacMan.Interface.PacMan;
 using PacMan.Local;
 using Scripts.Map;
@@ -39,7 +40,6 @@ namespace PacMan.Agent
 
             var teamAgentManagers = _agent.GetTeamAgents(); //Agents in team, including this agent
             var friendlyAgentManagers = _agent.GetFriendlyAgents(); //Agents in team, except this agent
-            friendlyAgentManagers[0].IsGhost(); // Can evaluate all the same checks as for yourself
 
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 

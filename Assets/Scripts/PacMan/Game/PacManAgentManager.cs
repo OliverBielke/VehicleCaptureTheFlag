@@ -296,12 +296,9 @@ namespace PacMan.Local
 
         public List<PacManAgentManager> GetVisibleEnemyAgents()
         {
-            return GetFriendlyAgents().SelectMany(friendly =>
-                    DoCheckVisibility(friendly.gameObject.transform).ToList()
-                        .FindAll(pair => pair.visible && !pair.agent.gameObject.CompareTag(tag))
-                        .Select(pair => pair.agent)
-                        .ToList())
-                .Distinct()
+            return DoCheckVisibility(transform)
+                .Where(pair => pair.visible)
+                .Select(pair => pair.agent)
                 .ToList();
         }
 
@@ -339,6 +336,7 @@ namespace PacMan.Local
             {
                 observations.AgentServerIndex = serverIndex;
             }
+
             _latestKnownObservation = observations;
         }
 
@@ -369,6 +367,7 @@ namespace PacMan.Local
 
         public float GetTimeRemaining()
         {
+            if (PacManGameManager.matchLength == 0) return 0;
             return PacManGameManager.matchLength - PacManGameManager.matchTime;
         }
 
