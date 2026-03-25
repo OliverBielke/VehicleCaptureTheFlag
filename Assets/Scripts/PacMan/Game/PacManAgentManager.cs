@@ -296,9 +296,11 @@ namespace PacMan.Local
 
         public List<PacManAgentManager> GetVisibleEnemyAgents()
         {
-            return DoCheckVisibility(transform)
-                .Where(pair => pair.visible)
-                .Select(pair => pair.agent)
+            return (GetTeamAgents() ?? new List<PacManAgentManager>())
+                .SelectMany(teamAgent => DoCheckVisibility(teamAgent.transform)
+                    .Where(pair => pair.visible)
+                    .Select(pair => pair.agent))
+                .Distinct()
                 .ToList();
         }
 
