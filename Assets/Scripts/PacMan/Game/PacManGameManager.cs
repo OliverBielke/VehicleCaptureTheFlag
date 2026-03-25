@@ -18,7 +18,8 @@ namespace PacMan.Game
         private const int ServerClientCount = TeamAssignmentUtil.ExpectedNetworkClientCount;
 
         public MapManager mapManager;
-        public GameObject agentPrefab;
+        public GameObject redAgentPrefab;
+        public GameObject blueAgentPrefab;
         public GameObject foodPrefab;
         public GameObject capsulePrefab;
 
@@ -168,8 +169,8 @@ namespace PacMan.Game
             if (agents == null || agents.Count == 0)
             {
                 agents = new List<PacManAgentManager>();
-                AddTeam("Blue");
-                AddTeam("Red");
+                AddTeam("Blue", blueAgentPrefab);
+                AddTeam("Red", redAgentPrefab);
             }
 
             CreateEdibles();
@@ -449,13 +450,13 @@ namespace PacMan.Game
         }
 
 
-        public void AddTeam(string team_tag)
+        public void AddTeam(string team_tag, GameObject prefab)
         {
             int index = team_tag == "Blue" ? 1 : 2;
             for (int i = 0; i < agentsPerTeam; i++)
             {
                 var position = mapManager.startPositions[i + (index - 1) * agentsPerTeam];
-                var agent = _pacManWorker.CreateAgent(agentPrefab, gameObject, mapManager.transform.Find("Starts").transform.position + position, team_tag);
+                var agent = _pacManWorker.CreateAgent(prefab, gameObject, mapManager.transform.Find("Starts").transform.position + position, team_tag);
 
                 agents.Add(agent.GetComponent<PacManAgentManager>());
                 if (team_tag == "Blue")
