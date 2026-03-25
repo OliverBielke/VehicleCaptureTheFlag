@@ -40,7 +40,8 @@ namespace PacMan.RLExample
             var localRandomPosition = new Vector3(Random.Range(-13f, -2.5f), 0.4f, Random.Range(-5f, 5f));
             _agent.transform.position = _agent.PacManGameManager.transform.TransformPoint(localRandomPosition);
             _caughtTarget = false;
-            _target = _agent.GetVisibleEnemyAgents()[0];
+
+            _target = _agent.PacManGameManager.agents.Find(agent => agent.gameObject != gameObject);
 
             localRandomPosition = new Vector3(Random.Range(-13f, -2.5f), 0.4f, Random.Range(-5f, 5f));
             _target.transform.position = _agent.PacManGameManager.transform.TransformPoint(localRandomPosition);
@@ -66,7 +67,7 @@ namespace PacMan.RLExample
 
         private Vector3 DistanceToTarget()
         {
-            return (_agent.GetVisibleEnemyAgents()[0].transform.position - _agent.transform.position) / 15f;
+            return (_target.transform.position - _agent.transform.position) / 15f;
         }
 
         protected override float CollectReward()
@@ -74,7 +75,7 @@ namespace PacMan.RLExample
             if (_caughtTarget) return 0.75f;
             var distanceCurrent = DistanceToTarget().magnitude;
             var potentialReward = _distancePrevious - distanceCurrent;
-            return potentialReward * 0.25f;
+            return potentialReward / gymSteps * 0.25f;
         }
 
         protected override EnvironmentState GymStep()
