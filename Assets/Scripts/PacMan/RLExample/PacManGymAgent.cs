@@ -45,7 +45,7 @@ namespace PacMan.RLExample
 
             localRandomPosition = new Vector3(Random.Range(-13f, -2.5f), 0.4f, Random.Range(-5f, 5f));
             _target.transform.position = _agent.PacManGameManager.transform.TransformPoint(localRandomPosition);
-            _distancePrevious = DistanceToTarget().magnitude;
+            _distancePrevious = DistanceToTarget(_target, _agent).magnitude;
         }
 
         public void FixedUpdate()
@@ -60,20 +60,30 @@ namespace PacMan.RLExample
 
         protected override void CollectObservation(ref AgentObservation observation)
         {
-            var enemyRelative = DistanceToTarget(); //Normalized target vector. Not in agent space, because actions are not in agent space :)
-            observation.AppendContinuous(enemyRelative.x);
-            observation.AppendContinuous(enemyRelative.z);
+            CollectObservation(observation, _target, _agent);
         }
 
-        private Vector3 DistanceToTarget()
+        public static AgentObservation CollectObservation(AgentObservation observation, PacManAgentManager targetAgent, PacManAgentManager thisAgent)
         {
-            return (_target.transform.position - _agent.transform.position) / 15f;
+            var enemyRelative = DistanceToTarget(targetAgent, thisAgent); //Normalized target vector. Not in agent space, because actions are not in agent space :)
+            observation.AppendContinuous(Mathf.Clamp(enemyRelative.x, -1f, 1f));
+            observation.AppendContinuous(Mathf.Clamp(enemyRelative.z, -1f, 1f));
+
+            var enemyVelocity = targetAgent.GetComponent<Rigidbody>().linearVelocity / 2.1f;
+            observation.AppendContinuous(Mathf.Clamp(enemyVelocity.x, -1, 1));
+            observation.AppendContinuous(Mathf.Clamp(enemyVelocity.z, -1, 1));
+            return observation;
+        }
+
+        public static Vector3 DistanceToTarget(PacManAgentManager targetAgent, PacManAgentManager agent)
+        {
+            return (targetAgent.transform.position - agent.transform.position) / 15f;
         }
 
         protected override float CollectReward()
         {
             if (_caughtTarget) return 0.75f;
-            var distanceCurrent = DistanceToTarget().magnitude;
+            var distanceCurrent = DistanceToTarget(_target, _agent).magnitude;
             var potentialReward = _distancePrevious - distanceCurrent;
             return potentialReward / gymSteps * 0.25f;
         }

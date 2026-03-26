@@ -135,7 +135,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7845767a80eb4e4d803c44d7cbd3375b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PacMan.RLExample.PacManGymAgent
-  continuousObservations: 2
+  continuousObservations: 4
   discreteObservations: 
   continuousActions: 2
   discreteActions: 

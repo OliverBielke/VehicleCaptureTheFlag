@@ -260,15 +260,15 @@ namespace PacMan.Local
         public virtual void OnCollisionStay(Collision other)
         {
             var otherAgent = other.gameObject.GetComponent<PacManAgentManager>();
-            if (other.gameObject.name == "PacManAgent" && other.gameObject.tag != tag && !otherAgent.isScared && (!IsGhost() && otherAgent.IsGhost() ||
-                                                                                                                  IsGhost() && otherAgent.IsGhost() ||
-                                                                                                                  !IsGhost() && !otherAgent.IsGhost()))
+            if (otherAgent != null && other.gameObject.tag != tag && !otherAgent.isScared && (!IsGhost() && otherAgent.IsGhost() ||
+                                                                                              IsGhost() && otherAgent.IsGhost() ||
+                                                                                              !IsGhost() && !otherAgent.IsGhost()))
             {
                 PacManGameManager.DropFood(this, false);
                 transform.position = globalStartPosition;
             }
 
-            if (other.gameObject.name == "PacManAgent" && other.gameObject.tag != tag && IsGhost() && isScared && !otherAgent.IsGhost())
+            if (otherAgent != null && other.gameObject.tag != tag && IsGhost() && isScared && !otherAgent.IsGhost())
             {
                 transform.position = globalStartPosition;
             }
