@@ -25,7 +25,6 @@ namespace PacMan.Interface
         public struct PacManObservation
         {
             public Vector3 Position;
-            public Vector3 Velocity;
             public bool IsGhost;
             public bool Visible;
             public float ReadingDispersion;
