@@ -62556,7 +62556,7 @@ PrefabInstance:
     - target: {fileID: 1579076643992335290, guid: 1d86bfcc61af61f4c8bfb03ac63a295c,
         type: 3}
       propertyPath: m_Name
-      value: ReplayManager
+      value: PlaybackManager
       objectReference: {fileID: 0}
     - target: {fileID: 1579076643992335290, guid: 1d86bfcc61af61f4c8bfb03ac63a295c,
         type: 3}
