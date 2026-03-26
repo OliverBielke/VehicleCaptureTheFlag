@@ -1164,7 +1164,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ebfbfa0c286248848af00f0f54b20e56, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PacMan.Game.PacManManagerModeSelector
-  mode: 3
+  mode: 0
   playback_manager: {fileID: 1238940903}
   game_manager: {fileID: 892656390}
 --- !u!4 &40357987
@@ -63978,7 +63978,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PacMan.Local.GameStatePlaybackManager
   mapManager: {fileID: 1238940898}
-  agentPrefab: {fileID: 3737944645222697628, guid: bee5b93dc0412234284720b2cac382a3,
+  redAgentPrefab: {fileID: 3737944645222697628, guid: bee5b93dc0412234284720b2cac382a3,
+    type: 3}
+  blueAgentPrefab: {fileID: 3737944645222697628, guid: bee5b93dc0412234284720b2cac382a3,
     type: 3}
   foodPrefab: {fileID: 1664925298644982172, guid: ccb1af850bf461a4299e072011c94a13,
     type: 3}

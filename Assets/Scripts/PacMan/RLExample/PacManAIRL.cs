@@ -11,7 +11,6 @@ namespace PacMan.RLExample
 {
     public class PacManAIRL : PacManAI
     {
-        private PacManAgentManager _agent;
         private InferenceHelper helper;
         public ModelAsset modelAsset;
 

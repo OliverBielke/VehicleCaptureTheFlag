@@ -9,9 +9,9 @@ namespace PacMan.Agent
 {
     public class PacManAI : MonoBehaviour
     {
-        private PacManAgentManager _agent;
-        private ObstacleMap _obstacleMap;
-        private MapManager _mapManager;
+        protected PacManAgentManager _agent;
+        protected ObstacleMap _obstacleMap;
+        protected MapManager _mapManager;
 
         public virtual void Initialize(MapManager mapManager) // Ticked when all agents spawned by the network and seen properly by the client. Not the same as Start or Awake in this assignment.
         {
