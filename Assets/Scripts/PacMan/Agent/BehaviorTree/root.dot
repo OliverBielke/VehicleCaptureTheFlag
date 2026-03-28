@@ -1,0 +1,92 @@
+digraph BehaviorTree {
+    rankdir=TB;
+    splines=polyline;
+    nodesep=0.45;
+    ranksep=0.75;
+    bgcolor="white";
+
+    node [
+        shape=box,
+        style="rounded,filled",
+        fontname="Arial",
+        fontsize=14,
+        margin="0.15,0.08",
+        color="#444444",
+        penwidth=1.2
+    ];
+
+    edge [
+        color="#333333",
+        penwidth=1.2,
+        arrowsize=0.8
+    ];
+
+    Root [label="Selector (?)\nRoot", fillcolor="#FFD966"];
+
+    LatePhase [label="Sequence (→)\nLate Game", fillcolor="#FFE599"];
+    LateCond  [label="Condition\nphase == LateGame", fillcolor="#D9D9D9"];
+    LateRoles [label="Selector (?)\nRoles", fillcolor="#FFD966"];
+
+    NormalPhase [label="Sequence (→)\nNormal Game", fillcolor="#FFE599"];
+    NormalCond  [label="Condition\nphase == NormalGame", fillcolor="#D9D9D9"];
+    NormalRoles [label="Selector (?)\nRoles", fillcolor="#FFD966"];
+
+    LateDefSeq [label="Sequence (→)", fillcolor="#FFE599"];
+    LateDefCond [label="Condition\nrole == Defender", fillcolor="#D9D9D9"];
+    LateDefAct [label="Action\nDefender Tactics", fillcolor="#9FC5E8"];
+
+    LateAtkSeq [label="Sequence (→)", fillcolor="#FFE599"];
+    LateAtkCond [label="Condition\nrole == Attacker", fillcolor="#D9D9D9"];
+    LateAtkAct [label="Action\nAttacker Tactics", fillcolor="#9FC5E8"];
+
+    BerserkSeq [label="Sequence (→)", fillcolor="#FFE599"];
+    BerserkCond [label="Condition\nrole == Berserker", fillcolor="#D9D9D9"];
+    BerserkAct [label="Action\nBerserker Tactics", fillcolor="#9FC5E8"];
+
+    PillageSeq [label="Sequence (→)", fillcolor="#FFE599"];
+    PillageCond [label="Condition\nrole == Pillager", fillcolor="#D9D9D9"];
+    PillageAct [label="Action\nPillager Tactics", fillcolor="#9FC5E8"];
+
+    DefSeq [label="Sequence (→)", fillcolor="#FFE599"];
+    DefCond [label="Condition\nrole == Defender", fillcolor="#D9D9D9"];
+    DefAct [label="Action\nDefender Tactics", fillcolor="#9FC5E8"];
+
+    AtkSeq [label="Sequence (→)", fillcolor="#FFE599"];
+    AtkCond [label="Condition\nrole == Attacker", fillcolor="#D9D9D9"];
+    AtkAct [label="Action\nAttacker Tactics", fillcolor="#9FC5E8"];
+
+    Root -> LatePhase;
+    Root -> NormalPhase;
+
+    LatePhase -> LateCond;
+    LatePhase -> LateRoles;
+
+    NormalPhase -> NormalCond;
+    NormalPhase -> NormalRoles;
+
+    LateRoles -> LateDefSeq;
+    LateRoles -> LateAtkSeq;
+    LateRoles -> BerserkSeq;
+    LateRoles -> PillageSeq;
+
+    LateDefSeq -> LateDefCond;
+    LateDefSeq -> LateDefAct;
+
+    LateAtkSeq -> LateAtkCond;
+    LateAtkSeq -> LateAtkAct;
+
+    BerserkSeq -> BerserkCond;
+    BerserkSeq -> BerserkAct;
+
+    PillageSeq -> PillageCond;
+    PillageSeq -> PillageAct;
+
+    NormalRoles -> DefSeq;
+    NormalRoles -> AtkSeq;
+
+    DefSeq -> DefCond;
+    DefSeq -> DefAct;
+
+    AtkSeq -> AtkCond;
+    AtkSeq -> AtkAct;
+}
