@@ -4,6 +4,7 @@ using PacMan.Interface.PacMan;
 using PacMan.Local;
 using Scripts.Map;
 using UnityEngine;
+using PacMan.Agent.PathFinding;
 
 namespace PacMan.Agent
 {
