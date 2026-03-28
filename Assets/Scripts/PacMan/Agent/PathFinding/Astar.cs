@@ -12,7 +12,7 @@ namespace PacMan.Agent.PathFinding
         private readonly List<Vector3> _astarExploredNodes = new();
         
         private const float ClearanceRadius = 2.5f;     // The radius to check for nearby obstacles (must be > carRadius)
-        private const float NarrowPathPenalty = 10.0f;  // Editable cost penalty added when moving through a narrow path
+        private const float NarrowPathPenalty = 0.0f;  // Editable cost penalty added when moving through a narrow path
 
         
         /// <summary>
@@ -23,8 +23,8 @@ namespace PacMan.Agent.PathFinding
         /// <returns>The planned path. </returns>
         public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal)
         {
-            const float gridSize = 2.0f;
-            const float carRadius = 1.1f;
+            const float gridSize = 0.5f;
+            const float carRadius = 0.2f;
             
             start = RoundToGrid(start, gridSize);
             goal = RoundToGrid(goal, gridSize);

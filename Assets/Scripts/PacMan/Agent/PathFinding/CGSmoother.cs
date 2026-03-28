@@ -29,7 +29,7 @@ namespace PacMan.Agent.PathFinding
         private const int MAX_INNER_ITER = 1000; //Changed to 1000 for faster runtime
         private const float MAX_GRADIENT = 100f;
         
-        private const float RIGHT_DRIVE = 5.0f; //Pushes path to right side
+        private const float RIGHT_DRIVE = 0.0f; //Pushes path to right side
     
     public CGSmoother(float carHeight, Collider map)
         {

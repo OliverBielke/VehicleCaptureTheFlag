@@ -17,7 +17,7 @@ namespace PacMan.Agent.PathFollowing
         private float MAX_DRONE_SPEED = 15f;
         
         public bool HasReachedGoal = false;
-        public float StoppingDistance = 3f; // Adjust based on the size of your car/goal
+        public float StoppingDistance = 0.5f; // Adjust based on the size of your car/goal
         
         // Outputs
         public float h { get; set; }  // Horizontal acceleration command [-1, 1]
@@ -53,14 +53,14 @@ namespace PacMan.Agent.PathFollowing
             targetSpeeds = GenerateTargetSpeeds(waypoints);
         }
         
-        public void PDCalculateMove(Transform droneTransform, DroneController drone)
+        public void PDCalculateMove(Transform droneTransform)
         {
             currDroneState = droneTransform;
             
             if (CheckGoalReached()) return;
             
-            MAX_DRONE_ACCEL = drone.max_acceleration;
-            MAX_DRONE_SPEED = drone.max_speed;
+            MAX_DRONE_ACCEL = 15f;
+            MAX_DRONE_SPEED = 15f;
             
             UpdateTargetDistance();
     
