@@ -11,9 +11,6 @@ namespace PacMan.Agent.PathFinding
     {
         private readonly List<Vector3> _astarExploredNodes = new();
         
-        private const float ClearanceRadius = 2.5f;     // The radius to check for nearby obstacles (must be > carRadius)
-        private const float NarrowPathPenalty = 0.0f;  // Editable cost penalty added when moving through a narrow path
-
         
         /// <summary>
         /// Run the A* algorithm. 
@@ -23,8 +20,8 @@ namespace PacMan.Agent.PathFinding
         /// <returns>The planned path. </returns>
         public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal)
         {
-            const float gridSize = 0.5f;
-            const float carRadius = 0.2f;
+            const float gridSize = 0.2f;
+            const float carRadius = 0.3f;
             
             start = RoundToGrid(start, gridSize);
             goal = RoundToGrid(goal, gridSize);
@@ -48,7 +45,7 @@ namespace PacMan.Agent.PathFinding
                 
                 _astarExploredNodes.Add(currentNode.Position);
                 
-                if (Vector3.Distance(currentNode.Position, goal) < gridSize * 1.5f)
+                if (Vector3.Distance(currentNode.Position, goal) < gridSize * Mathf.Sqrt(2))
                 {
                     Debug.Log($"A* found path in {iter} iterations");
                     List<Vector3> path = ReconstructPath(currentNode);
@@ -123,7 +120,7 @@ namespace PacMan.Agent.PathFinding
             /// <returns>The cost to come to this node from start. </returns>
             public float CostToCome(AStarNode parent)
             {
-                var cost = CalculateNarrowPathPenalty();
+                var cost = 0f;
                 
                 if (parent != null)
                 {
@@ -131,23 +128,6 @@ namespace PacMan.Agent.PathFinding
                 }
                 
                 return cost;
-            }
-            
-            
-            /// <summary>
-            /// Calculates a penalty for being in a narrow path. If there are obstacles within the clearance radius, we add a penalty to the cost to encourage the algorithm to find wider paths when possible.
-            /// </summary>
-            /// <returns>Zero when no obstacle within a radius, the narrow path penalty otherwise. </returns>
-            private float CalculateNarrowPathPenalty()
-            {
-                var obstacleLayer = LayerMask.GetMask("Obstacle");
-                var isNearObstacle = Physics.CheckBox(
-                    Position,
-                    new Vector3(ClearanceRadius, 0.5f, ClearanceRadius), 
-                    Quaternion.identity,
-                    obstacleLayer
-                );
-                return isNearObstacle ? NarrowPathPenalty : 0f;
             }
             
 

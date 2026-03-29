@@ -43,9 +43,9 @@ namespace PacMan.Agent
             var activeFoodPositions = foodPositions.FindAll(food => food.activeSelf); // Food that is currently on the ground
             var inactiveFoodLatestPositions = foodPositions.FindAll(food => !food.activeSelf); // Food that is currently carried. The gameObject position will report where it was picked up from. Might be useful in some scenarios.
             List<GameObject> capsulePositions = _agent.GetCapsuleObjects();
-
+            
             var isLocalPointTraversable = _obstacleMap?.GetLocalPointTraversibility(transform.localPosition);
-
+            
             var teamAgentManagers = _agent.GetTeamAgents(); //Agents in team, including this agent
             var friendlyAgentManagers = _agent.GetFriendlyAgents(); //Agents in team, except this agent
 
@@ -67,11 +67,20 @@ namespace PacMan.Agent
                 var agentPos = _initialDroneState.position;
                 var closestPos =  Vector3.zero;
                 var closestDistance = float.MaxValue;
-                foreach (var foodPosition in capsulePositions)
+                foreach (var foodPosition in activeFoodPositions)
                 {
+                    //Check if food is on oppenents side
+                    var foodPos = foodPosition.transform.position;
+                    var startPos = _agent.globalStartPosition;
+                    var isEatableFood = (startPos.x * foodPos.x < 0); //Food is eatable if on opposite side
+                    
+                    if (!isEatableFood) //If not eatable
+                    {
+                        continue;
+                    }
+                    
                     //Check distance to food
-                    var curPos = foodPosition.transform.position;
-                    var curDistance = Vector3.Distance(curPos, agentPos);
+                    var curDistance = Vector3.Distance(foodPos, agentPos);
 
                     if (closestDistance <= curDistance) //If not the closest food
                     {
@@ -79,15 +88,14 @@ namespace PacMan.Agent
                     }
                     //Assign current food as closest
                     closestDistance = curDistance;
-                    closestPos = curPos;
-                    
-                    var size = 0.5f;
-                    Debug.DrawLine(closestPos - Vector3.up * size, closestPos + Vector3.up * size, Color.red, 100f);
-                    Debug.DrawLine(closestPos - Vector3.left * size, closestPos + Vector3.left * size, Color.red, 100f);
-                    Debug.DrawLine(closestPos - Vector3.forward * size, closestPos + Vector3.forward * size, Color.red, 100f);
-                    
+                    closestPos = foodPos;
                 }
                 
+                var size = 0.5f;
+                Debug.DrawLine(closestPos - Vector3.up * size, closestPos + Vector3.up * size, Color.red, 100f);
+                Debug.DrawLine(closestPos - Vector3.left * size, closestPos + Vector3.left * size, Color.red, 100f);
+                Debug.DrawLine(closestPos - Vector3.forward * size, closestPos + Vector3.forward * size, Color.red, 100f);
+
                 _goalPosition = closestPos;
                 _hasGoal = true;
                 
