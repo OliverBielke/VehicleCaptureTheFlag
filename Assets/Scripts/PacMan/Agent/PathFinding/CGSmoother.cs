@@ -11,10 +11,10 @@ namespace PacMan.Agent.PathFinding
     public class CGSmoother
     {
         //private const float ALPHA = 0.00005f;
-        private const float ALPHA = 0.005f; //Changed from 0.00005f for faster runtime
-        public const float D_MAX = 5.0f; // Was 2.4f
+        private const float ALPHA = 0.00005f; //Changed from 0.00005f for faster runtime
+        public const float D_MAX = 1.0f; // Was 2.4f
         //private const float W_COLLISION = 10000f;
-        private const float W_COLLISION = 1000f; //Changed to 200 for new mechanics, original is 10000
+        private const float W_COLLISION = 4000f; //Changed to 200 for new mechanics, original is 10000
 
 
         //private const float W_CURVATURE = 5f;
@@ -22,7 +22,7 @@ namespace PacMan.Agent.PathFinding
         //private const float W_SMOOTHNESS = 1f;
         private const float W_SMOOTHNESS = 10f; //Changed to 10 for new mechanics, original is 1
         //public const int DISTANCE_MAP_RESOLUTION = 800;
-        public const int DISTANCE_MAP_RESOLUTION = 150; //Changed to 150 for faster runtime
+        public const int DISTANCE_MAP_RESOLUTION = 200; //Changed to 150 for faster runtime
         //private const int MAX_OUTER_ITER = 5;
         private const int MAX_OUTER_ITER = 1; //Changed to 1 for faster runtime
         //private const int MAX_INNER_ITER = 50000;
@@ -122,11 +122,11 @@ namespace PacMan.Agent.PathFinding
             return distMap[indexX][indexZ];
         }
 
-        public List<Node> GetResampledPath(List<Node> path, float spacing)
+        private static List<Node> GetResampledPath(List<Node> path, float spacing)
         {
-            List<Node> newPath = new List<Node>();
+            List<Node> newPath = new();
             newPath.Add(new Node(path[0].position.x, path[0].position.y));
-            float currSpace = spacing;
+            var currSpace = spacing;
             for (int i = 0; i < path.Count - 1; i++)
             {
                 Vector2 curr = path[i].position;
@@ -161,14 +161,14 @@ namespace PacMan.Agent.PathFinding
 
         public List<Node> GetSmoothedPath(List<Node> path)
         {
-            int maxIter = MAX_OUTER_ITER;
-            int iter = 0;
+            var maxIter = MAX_OUTER_ITER;
+            var iter = 0;
             List<float> targetSpeed;
             while (maxIter > iter)
             {
-                int spacing = 5; // Changed to 5 for faster runtime, original was 2
+                var spacing = 1; // Changed to 5 for faster runtime, original was 2
                 path = GetResampledPath(path, spacing);
-                targetSpeed = CarControlling.GenerateTargetSpeeds(path);
+                targetSpeed = DroneControlling.GenerateTargetSpeeds(path);
                 path = RunGradientDescent(path, targetSpeed);
                 iter++;
             }
@@ -176,11 +176,11 @@ namespace PacMan.Agent.PathFinding
             return path;
         }
 
-        public List<Node> RunGradientDescent(List<Node> path, List<float> targetSpeed)
+        private List<Node> RunGradientDescent(List<Node> path, List<float> targetSpeed)
         {
             // Gradient Descent
-            int maxIter = MAX_INNER_ITER;
-            float convergenceThreshold = 0.001f;
+            var maxIter = MAX_INNER_ITER;
+            var convergenceThreshold = 0.001f;
             for (int i = 0; i < maxIter; i++)
             {
                 Vector2[] gradients = new Vector2[path.Count];
@@ -254,7 +254,7 @@ namespace PacMan.Agent.PathFinding
             float adjustment = laplace.magnitude; // Changed to linear for faster runtime, original is above
             
             // Adjust curvature weight based on target speed, dont need curvature if we are slow
-            float wCurvature = W_CURVATURE-2.5f + Mathf.Sqrt(targetSpeed)/2;
+            float wCurvature = W_CURVATURE -2.5f + Mathf.Sqrt(targetSpeed)/2;
             
             gradients[1] += wCurvature * -4 * dir * adjustment;
             gradients[1] += RIGHT_DRIVE * -rightDir;

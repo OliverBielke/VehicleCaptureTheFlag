@@ -13,8 +13,8 @@ namespace PacMan.Agent.PathFollowing
         private const float K_D_POSITION = 1.5f;
         private const float K_P_VELOCITY = 10f;
         private const float K_D_VELOCITY = 0f;
-        private float MAX_DRONE_ACCEL = 15f;
-        private float MAX_DRONE_SPEED = 15f;
+        private const float MAX_DRONE_ACCEL = 15f;
+        private const float MAX_DRONE_SPEED = 15f;
         
         public bool HasReachedGoal = false;
         public float StoppingDistance = 0.5f; // Adjust based on the size of your car/goal
@@ -59,33 +59,30 @@ namespace PacMan.Agent.PathFollowing
             
             if (CheckGoalReached()) return;
             
-            MAX_DRONE_ACCEL = 15f;
-            MAX_DRONE_SPEED = 15f;
-            
             UpdateTargetDistance();
     
-            Vector2 targetPoint = GetTargetPoint(droneTransform.position);
-            Vector2 currentPos2D = new Vector2(droneTransform.position.x, droneTransform.position.z);
+            var targetPoint = GetTargetPoint(droneTransform.position);
+            var currentPos2D = new Vector2(droneTransform.position.x, droneTransform.position.z);
     
-            Vector2 currentVel = new Vector2(
+            var currentVel = new Vector2(
                 (droneTransform.position.x - prevDronePos.x) / Time.fixedDeltaTime,
                 (droneTransform.position.z - prevDronePos.z) / Time.fixedDeltaTime
             );
             
-            float targetSpeed = GetMinTargetSpeed(this.bestStartIndex, this.waypoints);
-            Vector2 targetDir = (targetPoint - currentPos2D).normalized;
-            Vector2 desiredVelocity = targetDir * targetSpeed;
+            var targetSpeed = GetMinTargetSpeed(bestStartIndex, waypoints);
+            var targetDir = (targetPoint - currentPos2D).normalized;
+            var desiredVelocity = targetDir * targetSpeed;
 
-            Vector2 velocityError = desiredVelocity - currentVel;
-            Vector2 positionError =  this.closestPoint - currentPos2D;
+            var velocityError = desiredVelocity - currentVel;
+            var positionError =  closestPoint - currentPos2D;
             
-            Vector2 velDeriv = (velocityError - lastVelError) / Time.fixedDeltaTime;
-            Vector2 posDeriv = (positionError - lastPosError) / Time.fixedDeltaTime;
+            var velDeriv = (velocityError - lastVelError) / Time.fixedDeltaTime;
+            var posDeriv = (positionError - lastPosError) / Time.fixedDeltaTime;
             
-            Vector2 velForce =  velocityError * K_P_VELOCITY + velDeriv*K_D_VELOCITY;
-            Vector2 posForce = positionError * K_P_POSITION + posDeriv* K_D_POSITION;
+            var velForce =  velocityError * K_P_VELOCITY + velDeriv*K_D_VELOCITY;
+            var posForce = positionError * K_P_POSITION + posDeriv* K_D_POSITION;
             
-            Vector2 total = velForce + posForce;
+            var total = velForce + posForce;
             
             //Debug.Log("Target Speed: " + targetSpeed);
             //Debug.Log("Current Speed" + currentVel.magnitude);
@@ -122,42 +119,43 @@ namespace PacMan.Agent.PathFollowing
         
         private float GetTargetSpeed(Vector2 pos, int index, List<Node> path)
         {
-            Vector2 prev = path[index].position;
-            Vector2 next = path[index+1].position;
-            float nextDist = Vector2.Distance(pos, next);
-            float totalDist = Vector2.Distance(prev, next);
-            float prevSpeed = this.targetSpeeds[index];
-            float nextSpeed = this.targetSpeeds[index+1];
+            var prev = path[index].position;
+            var next = path[index+1].position;
+            var nextDist = Vector2.Distance(pos, next);
+            var totalDist = Vector2.Distance(prev, next);
+            var prevSpeed = targetSpeeds[index];
+            var nextSpeed = targetSpeeds[index+1];
             // Linear interpolation
-            float targetSpeed = nextDist/totalDist*prevSpeed + (1 - nextDist / totalDist)*nextSpeed;
+            var targetSpeed = nextDist/totalDist*prevSpeed + (1 - nextDist / totalDist)*nextSpeed;
             return targetSpeed;
         }
         
-        public List<float> GenerateTargetSpeeds(List<Node> path)
+        public static List<float> GenerateTargetSpeeds(List<Node> path)
         {
             // Kapania, Subosits, Gerdes "A Sequential Two-Step Algorithm for Fast Generation of Vehicle Racing Trajectories"
             
-            float MaxAcceleration = MAX_DRONE_ACCEL;
+            var maxAcceleration = MAX_DRONE_ACCEL;
             
-            List<float> speeds = new List<float>();
+            List<float> speeds = new();
             speeds.Add(0);
-            for (int i = 1; i < path.Count - 1; i++)
+            for (var i = 1; i < path.Count - 1; i++)
             {
-                Vector2 prev = path[i - 1].position;
-                Vector2 curr = path[i].position;
-                Vector2 next = path[i + 1].position;
+                var prev = path[i - 1].position;
+                var curr = path[i].position;
+                var next = path[i + 1].position;
                 
-                Vector2 enterDir = (curr - prev).normalized;
-                Vector2 leaveDir = (next - curr).normalized;
-                float angle = Vector2.Angle(enterDir, leaveDir);
-                float dist = Math.Max((Vector2.Distance(curr, prev) + Vector2.Distance(next, curr)) / 2, 0.001f);
-                float curvature = angle * Mathf.Deg2Rad / dist;
-                curvature = Mathf.Pow(curvature+0.98f, 3f) - 1;
+                var enterDir = (curr - prev).normalized;
+                var leaveDir = (next - curr).normalized;
+                var angle = Vector2.Angle(enterDir, leaveDir);
+                var dist = Math.Max((Vector2.Distance(curr, prev) + Vector2.Distance(next, curr)) / 2, 0.001f);
+                var curvature = angle * Mathf.Deg2Rad / dist;
+                
                 if (curvature < 0.001f)
                 {
                     speeds.Add(MAX_DRONE_SPEED);
                     continue;
-                }float maxSpeed = Mathf.Sqrt(MaxAcceleration/curvature);
+                }
+                var maxSpeed = Mathf.Sqrt(maxAcceleration/curvature);
                 maxSpeed = Mathf.Min(MAX_DRONE_SPEED, maxSpeed);
                 speeds.Add(maxSpeed);
             }
@@ -165,32 +163,32 @@ namespace PacMan.Agent.PathFollowing
             speeds.Add(MAX_DRONE_SPEED);
             
             // Backwards
-            for (int i = path.Count - 2; i >= 0; i--)
+            for (var i = path.Count - 2; i >= 0; i--)
             {
-                Vector2 curr = path[i].position;
-                Vector2 next = path[i + 1].position;
-                float dist =  Vector2.Distance(curr, next);
+                var curr = path[i].position;
+                var next = path[i + 1].position;
+                var dist =  Vector2.Distance(curr, next);
                 
-                float vNext = speeds[i + 1];
+                var vNext = speeds[i + 1];
 
                 // Safety margin as someof the accel is located to correcting errors
-                float decel = MaxAcceleration;
+                var decel = maxAcceleration;
                 
-                float vCurr = (float) Math.Sqrt(Math.Pow(vNext, 2) + 2*decel*dist);
+                var vCurr = (float) Math.Sqrt(Math.Pow(vNext, 2) + 2*decel*dist);
 
                 speeds[i] = Math.Min(vCurr, speeds[i]);
             }
             
-            for (int i = 1; path.Count > i; i++)
+            for (var i = 1; path.Count > i; i++)
             {
-                Vector2 curr = path[i].position;
-                Vector2 prev = path[i - 1].position;
-                float dist =  Vector2.Distance(curr, prev);
+                var curr = path[i].position;
+                var prev = path[i - 1].position;
+                var dist =  Vector2.Distance(curr, prev);
                 
-                float vPrev = speeds[i - 1];
+                var vPrev = speeds[i - 1];
                 
-                float accel = MaxAcceleration;
-                float vCurr = (float) Math.Sqrt(Math.Pow(vPrev, 2) + 2*accel*dist);
+                var accel = maxAcceleration;
+                var vCurr = (float) Math.Sqrt(Math.Pow(vPrev, 2) + 2*accel*dist);
 
                 speeds[i] = Math.Min(vCurr, speeds[i]);
             }
@@ -201,7 +199,7 @@ namespace PacMan.Agent.PathFollowing
         private void UpdateTargetDistance()
         {
             float currentSpeed = Vector3.Distance(this.currDroneState.position, this.prevDronePos) / Time.fixedDeltaTime;
-            this.targetDistance = Mathf.Clamp(currentSpeed / 2f, 1f, 2f);
+            targetDistance = Mathf.Clamp(currentSpeed / 2f, 1f, 2f);
         }
 
         private Vector2 GetTargetPoint(Vector3 currentPosition)

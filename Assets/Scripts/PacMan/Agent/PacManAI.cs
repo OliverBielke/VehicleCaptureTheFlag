@@ -112,12 +112,12 @@ namespace PacMan.Agent
                 {
                     nodes.Add(new Node(pos.x, pos.z));
                 }
-                /*
-                GameObject groundPlane = GameObject.Find("GroundPlane");
-                Collider groundCollider = groundPlane.GetComponent<Collider>();
-                CGSmoother smoother = new CGSmoother(agentPos.y, groundCollider);
+                
+                var groundPlane = GameObject.Find("GroundPlane");
+                var groundCollider = groundPlane.GetComponent<Collider>();
+                var smoother = new CGSmoother(agentPos.y, groundCollider);
                 nodes = smoother.GetSmoothedPath(nodes);
-                */
+                
                 
                 _waypoints = nodes;
         
@@ -146,6 +146,8 @@ namespace PacMan.Agent
                 Acceleration = new Vector2(x, z), // Controller converts to normalized if magnitude > 1. Magnitude 0.3 guarantees not observed
             };
 
+            Debug.Log($"Drone acceleration: {droneAction.Acceleration.magnitude}, Intended move: {droneAction.Acceleration}, Velocity: {velocity}");
+            
             return droneAction;
         }
         
