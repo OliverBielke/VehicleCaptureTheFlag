@@ -58,8 +58,7 @@ namespace PacMan
                 var agent = agents[agentIndex].GetComponent<PacManAgentManager>();
                 if (controlledAgentSet.Contains(agentIndex))
                 {
-                    var filteredObservations = FilterObservationsForHiddenEnemies(agent.GetEnemyObservations(), enemyAgentIndices, visibleEnemyIndices);
-                    storeState.Agents.Add(PacManStateFromObject(agent, filteredObservations));
+                    storeState.Agents.Add(PacManStateFromObject(agent));
                     continue;
                 }
 
@@ -322,29 +321,6 @@ namespace PacMan
             }
 
             return visibleEnemyIndices;
-        }
-
-        private static PacManObservations FilterObservationsForHiddenEnemies(PacManObservations observations, IReadOnlyList<int> enemyAgentIndices, HashSet<int> visibleEnemyIndices)
-        {
-            var sourceObservations = observations.Observations ?? Array.Empty<PacManObservation>();
-            var observationCount = Math.Min(sourceObservations.Length, enemyAgentIndices.Count);
-            var filteredObservations = sourceObservations
-                .Take(observationCount)
-                .Where((observation, index) =>
-                {
-                    var observationServerIndex = observation.ServerIndex;
-                    var candidateIndex = observationServerIndex >= 0 ? observationServerIndex : enemyAgentIndices[index];
-                    return !visibleEnemyIndices.Contains(candidateIndex);
-                })
-                .ToArray();
-
-            return new PacManObservations
-            {
-                Index = observations.Index,
-                ObservationFixedTime = observations.ObservationFixedTime,
-                AgentServerIndex = observations.AgentServerIndex,
-                Observations = filteredObservations
-            };
         }
 
         private static ProtoPacManObservation ObservationFromValue(PacManObservation observation)

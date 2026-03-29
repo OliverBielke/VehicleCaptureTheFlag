@@ -148,7 +148,12 @@ namespace PacMan.Game
             capsules.Clear();
             StartGame();
             SynchronizeAgentServerIndices();
-            agents.ForEach(agent => agent.Initialize(this, ShouldDeferAgentAIInitialization));
+            agents.ForEach(agent => agent.Initialize(this, true));
+            agents.ForEach(agent => agent.UpdateObservations());
+            if (!ShouldDeferAgentAIInitialization)
+            {
+                agents.ForEach(agent => agent.InitializeAIIfNeeded());
+            }
             LogServerOwnershipLayout();
             gameRecorder?.StartRecording(this);
         }
