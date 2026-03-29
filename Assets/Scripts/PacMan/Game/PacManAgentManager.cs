@@ -15,6 +15,7 @@ namespace PacMan.Local
         public List<GameObject> foodCarried;
         public bool isGhost;
         public int serverIndex = -1;
+        private int _lastRespawnStep;
 
         private PacManAI _pacManAI;
         private bool _aiInitialized;
@@ -50,6 +51,7 @@ namespace PacMan.Local
             foodCarried = new List<GameObject>();
             _aiInitialized = false;
             _latestKnownObservation.AgentServerIndex = serverIndex;
+            _lastRespawnStep = PacManGameManager != null ? PacManGameManager.CurrentSimulationStep : 0;
 
             ConfigureForCurrentMode();
 
@@ -129,7 +131,8 @@ namespace PacMan.Local
                         IsGhost = isGhost,
                         HasFood = agent.foodCarried.Count > 0,
                         Position = agent.gameObject.transform.localPosition,
-                        ServerIndex = agent.serverIndex
+                        ServerIndex = agent.serverIndex,
+                        LastRespawnStep = agent.GetLastRespawnStep()
                     };
                     if (!pair.visible)
                     {
@@ -252,7 +255,7 @@ namespace PacMan.Local
 
             if (IsGhost() && other.gameObject.name == "Capsule")
             {
-                transform.position = globalStartPosition;
+                RespawnAtStart();
             }
         }
 
@@ -264,12 +267,12 @@ namespace PacMan.Local
                                                                                               !IsGhost() && !otherAgent.IsGhost()))
             {
                 PacManGameManager.DropFood(this, false);
-                transform.position = globalStartPosition;
+                RespawnAtStart();
             }
 
             if (otherAgent != null && other.gameObject.tag != tag && IsGhost() && isScared && !otherAgent.IsGhost())
             {
-                transform.position = globalStartPosition;
+                RespawnAtStart();
             }
         }
 
@@ -324,6 +327,16 @@ namespace PacMan.Local
             return PacManGameManager != null ? PacManGameManager.CurrentSimulationTime : Time.fixedTime;
         }
 
+        public int GetStepsSinceMatchStart()
+        {
+            return PacManGameManager != null ? PacManGameManager.CurrentSimulationStep : 0;
+        }
+
+        public int GetStepsRemaining()
+        {
+            return PacManGameManager != null ? PacManGameManager.RemainingSimulationSteps : 0;
+        }
+
         public PacManObservations GetEnemyObservations()
         {
             return _latestKnownObservation;
@@ -341,6 +354,12 @@ namespace PacMan.Local
             _latestKnownObservation = observations;
         }
 
+        public void RespawnAtStart(int respawnStep = -1)
+        {
+            transform.position = globalStartPosition;
+            SetLastRespawnStep(respawnStep >= 0 ? respawnStep : GetStepsSinceMatchStart());
+        }
+
         public Vector3 GetStartPosition()
         {
             return PacManGameManager.transform.InverseTransformPoint(globalStartPosition);
@@ -349,6 +368,11 @@ namespace PacMan.Local
         public int GetCarriedFoodCount()
         {
             return foodCarried.Count;
+        }
+
+        public int GetLastRespawnStep()
+        {
+            return _lastRespawnStep;
         }
 
         public List<GameObject> GetCapsuleObjects()
@@ -375,6 +399,11 @@ namespace PacMan.Local
         public int GetScore()
         {
             return TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue ? PacManGameManager.blueScore : PacManGameManager.redScore;
+        }
+
+        public void SetLastRespawnStep(int step)
+        {
+            _lastRespawnStep = Mathf.Max(0, step);
         }
 
         public void SetScared(bool b, double serverTimeFixedTime)

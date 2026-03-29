@@ -134,6 +134,8 @@ namespace PacMan
                 throw new ArgumentNullException(nameof(readState));
             }
 
+            ApplyAuthoritativeSimulationState(gameManager, readState);
+
             var agentCount = Math.Min(readState.Agents.Count, gameManager.agents.Count);
             for (int i = 0; i < agentCount; i++)
             {
@@ -174,7 +176,8 @@ namespace PacMan
                 Velocity = Vector3FromUnity(rigidBody.linearVelocity),
                 AngularVelocity = Vector3FromUnity(rigidBody.angularVelocity),
                 Tag = agent.tag ?? string.Empty,
-                ServerIndex = agent.serverIndex
+                ServerIndex = agent.serverIndex,
+                LastRespawnStep = agent.GetLastRespawnStep()
             };
 
             if (includeObservations)
@@ -190,7 +193,8 @@ namespace PacMan
             return new ProtoPacManState
             {
                 Tag = agent.tag ?? string.Empty,
-                ServerIndex = agent.serverIndex
+                ServerIndex = agent.serverIndex,
+                LastRespawnStep = agent.GetLastRespawnStep()
             };
         }
 
@@ -198,6 +202,7 @@ namespace PacMan
         {
             agent.tag = state?.Tag ?? agent.tag;
             agent.serverIndex = ResolveServerIndex(state, fallbackServerIndex);
+            agent.SetLastRespawnStep(state?.LastRespawnStep ?? 0);
 
             var hasAuthoritativeState = state?.Transform != null;
             agent.gameObject.SetActive(hasAuthoritativeState);
@@ -246,7 +251,9 @@ namespace PacMan
             {
                 Time = gameManager.matchTime,
                 MapName = mapName ?? string.Empty,
-                FixedDeltaTime = Time.fixedDeltaTime
+                FixedDeltaTime = Time.fixedDeltaTime,
+                StepsSinceMatchStart = gameManager.CurrentSimulationStep,
+                StepsRemaining = gameManager.RemainingSimulationSteps
             };
 
             storeState.Food.Add(gameManager.foodList.Select(food => EdibleFromObject(food)));
@@ -332,7 +339,8 @@ namespace PacMan
                 Visible = observation.Visible,
                 ReadingDispersion = observation.ReadingDispersion,
                 HasFood = observation.HasFood,
-                ServerIndex = observation.ServerIndex
+                ServerIndex = observation.ServerIndex,
+                LastRespawnStep = observation.LastRespawnStep
             };
         }
 
@@ -353,7 +361,8 @@ namespace PacMan
             {
                 return new PacManObservation
                 {
-                    ServerIndex = -1
+                    ServerIndex = -1,
+                    LastRespawnStep = 0
                 };
             }
 
@@ -364,8 +373,30 @@ namespace PacMan
                 Visible = protoObservation.Visible,
                 ReadingDispersion = protoObservation.ReadingDispersion,
                 HasFood = protoObservation.HasFood,
-                ServerIndex = protoObservation.ServerIndex
+                ServerIndex = protoObservation.ServerIndex,
+                LastRespawnStep = protoObservation.LastRespawnStep
             };
+        }
+
+        private static void ApplyAuthoritativeSimulationState(PacManGameManager gameManager, ProtoGameState readState)
+        {
+            var fixedDeltaTime = readState.FixedDeltaTime > 0f ? readState.FixedDeltaTime : Time.fixedDeltaTime;
+
+            var stepsSinceMatchStart = readState.StepsSinceMatchStart;
+            if (stepsSinceMatchStart == 0 && readState.Time > 0f)
+            {
+                stepsSinceMatchStart = gameManager.EstimateStepsSinceMatchStart(readState.Time, fixedDeltaTime);
+            }
+
+            var stepsRemaining = readState.StepsRemaining;
+            if (stepsRemaining == 0 &&
+                gameManager.matchLength > 0f &&
+                readState.Time <= gameManager.matchLength)
+            {
+                stepsRemaining = gameManager.CalculateStepsRemaining(stepsSinceMatchStart, fixedDeltaTime);
+            }
+
+            gameManager.ApplyAuthoritativeSimulationState(readState.Time, stepsSinceMatchStart, stepsRemaining);
         }
 
         private static int ResolveServerIndex(ProtoPacManState state, int fallbackServerIndex)

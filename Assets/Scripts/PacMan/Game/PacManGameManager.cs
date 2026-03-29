@@ -31,6 +31,8 @@ namespace PacMan.Game
         protected float StartTime;
         public float matchTime;
         public float matchLength = 240; //From original 3000 / 4
+        private int _stepsSinceMatchStart;
+        private int _stepsRemaining;
 
         public bool finished = false;
         public int agentsPerTeam;
@@ -60,6 +62,8 @@ namespace PacMan.Game
         public ManagerMode ActiveMode => CurrentMode;
         public bool UsesManualSimulation => CurrentMode == ManagerMode.Server || CurrentMode == ManagerMode.Client;
         public float CurrentSimulationTime => matchTime;
+        public int CurrentSimulationStep => _stepsSinceMatchStart;
+        public int RemainingSimulationSteps => _stepsRemaining;
         protected virtual bool ShouldDeferAgentAIInitialization => false;
 
         void Awake()
@@ -162,7 +166,7 @@ namespace PacMan.Game
         {
             EnsureCollectionsInitialized();
             StartTime = Time.time;
-            matchTime = 0f;
+            ApplyAuthoritativeSimulationState(0f, 0, CalculateStepsRemaining(0, Time.fixedDeltaTime));
             _waitingForClientActions = false;
             _loggedServerOwnershipLayout = false;
             _loggedOwnershipWarnings.Clear();
@@ -576,6 +580,36 @@ namespace PacMan.Game
         protected void AdvanceSimulationClock(float deltaTime)
         {
             matchTime += deltaTime;
+            _stepsSinceMatchStart += 1;
+            _stepsRemaining = CalculateStepsRemaining(_stepsSinceMatchStart, Time.fixedDeltaTime);
+        }
+
+        public void ApplyAuthoritativeSimulationState(float authoritativeTime, int stepsSinceMatchStart, int stepsRemaining)
+        {
+            matchTime = authoritativeTime;
+            _stepsSinceMatchStart = Mathf.Max(0, stepsSinceMatchStart);
+            _stepsRemaining = Mathf.Max(0, stepsRemaining);
+        }
+
+        public int EstimateStepsSinceMatchStart(float authoritativeTime, float fixedDeltaTime)
+        {
+            if (authoritativeTime <= 0f || fixedDeltaTime <= 0f)
+            {
+                return 0;
+            }
+
+            return Mathf.Max(0, Mathf.RoundToInt(authoritativeTime / fixedDeltaTime));
+        }
+
+        public int CalculateStepsRemaining(int stepsSinceMatchStart, float fixedDeltaTime)
+        {
+            if (matchLength <= 0f || fixedDeltaTime <= 0f)
+            {
+                return 0;
+            }
+
+            var totalSteps = Mathf.FloorToInt(matchLength / fixedDeltaTime) + 1;
+            return Mathf.Max(0, totalSteps - Mathf.Max(0, stepsSinceMatchStart));
         }
 
         private List<ProtoGameState> BuildGameStatesForClients()

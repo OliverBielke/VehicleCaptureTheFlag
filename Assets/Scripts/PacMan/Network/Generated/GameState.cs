@@ -27,50 +27,52 @@ namespace PacMan.Network.Generated {
             "ChlQcm90b2J1Zi9nYW1lX3N0YXRlLnByb3RvEgZwYWNtYW4iJgoRSW5pdGlh",
             "bGl6ZVJlcXVlc3QSEQoJY2xpZW50X2lkGAEgASgJIkwKC1N0ZXBSZXF1ZXN0",
             "EhEKCWNsaWVudF9pZBgBIAEoCRIqCgdhY3Rpb25zGAIgAygLMhkucGFjbWFu",
-            "LlByb3RvUGFjTWFuQWN0aW9uIuwBCglHYW1lU3RhdGUSDAoEdGltZRgBIAEo",
+            "LlByb3RvUGFjTWFuQWN0aW9uIqYCCglHYW1lU3RhdGUSDAoEdGltZRgBIAEo",
             "AhIhCgRmb29kGAIgAygLMhMucGFjbWFuLlByb3RvRWRpYmxlEiUKCGNhcHN1",
             "bGVzGAMgAygLMhMucGFjbWFuLlByb3RvRWRpYmxlEigKBmFnZW50cxgEIAMo",
             "CzIYLnBhY21hbi5Qcm90b1BhY01hblN0YXRlEhAKCG1hcF9uYW1lGAUgASgJ",
             "EhEKCWNsaWVudF9pZBgGIAEoCRIeChZjb250cm9sbGVkX2FnZW50X2luZGV4",
-            "GAcgASgFEhgKEGZpeGVkX2RlbHRhX3RpbWUYCCABKAIiTgoRUHJvdG9QYWNN",
-            "YW5BY3Rpb24SKgoMYWNjZWxlcmF0aW9uGAEgASgLMhQucGFjbWFuLlByb3Rv",
-            "VmVjdG9yMhINCgVpbmRleBgCIAEoBSKUAwoQUHJvdG9QYWNNYW5TdGF0ZRIp",
-            "Cgl0cmFuc2Zvcm0YASABKAsyFi5wYWNtYW4uUHJvdG9UcmFuc2Zvcm0SFAoM",
-            "Zm9vZF9jYXJyaWVkGAIgASgFEhEKCWlzX3NjYXJlZBgDIAEoCBIQCghpc19n",
-            "aG9zdBgEIAEoCBISCgppc19wb3dlcmVkGAUgASgIEhgKEHNjYXJlZF9yZW1h",
-            "aW5pbmcYBiABKAESJwoJZGlyZWN0aW9uGAcgASgLMhQucGFjbWFuLlByb3Rv",
-            "VmVjdG9yMhIRCgltYWduaXR1ZGUYCCABKAISJgoIdmVsb2NpdHkYCSABKAsy",
-            "FC5wYWNtYW4uUHJvdG9WZWN0b3IzEi4KEGFuZ3VsYXJfdmVsb2NpdHkYCiAB",
-            "KAsyFC5wYWNtYW4uUHJvdG9WZWN0b3IzEgsKA3RhZxgLIAEoCRI1CgxvYnNl",
-            "cnZhdGlvbnMYDCABKAsyHy5wYWNtYW4uUHJvdG9QYWNNYW5PYnNlcnZhdGlv",
-            "bnMSFAoMc2VydmVyX2luZGV4GA0gASgFIpoBChdQcm90b1BhY01hbk9ic2Vy",
-            "dmF0aW9ucxI0CgxvYnNlcnZhdGlvbnMYASADKAsyHi5wYWNtYW4uUHJvdG9Q",
-            "YWNNYW5PYnNlcnZhdGlvbhINCgVpbmRleBgCIAEoBRIeChZvYnNlcnZhdGlv",
-            "bl9maXhlZF90aW1lGAMgASgCEhoKEmFnZW50X3NlcnZlcl9pbmRleBgEIAEo",
-            "BSLPAQoWUHJvdG9QYWNNYW5PYnNlcnZhdGlvbhImCghwb3NpdGlvbhgBIAEo",
-            "CzIULnBhY21hbi5Qcm90b1ZlY3RvcjMSJgoIdmVsb2NpdHkYAiABKAsyFC5w",
-            "YWNtYW4uUHJvdG9WZWN0b3IzEhAKCGlzX2dob3N0GAMgASgIEg8KB3Zpc2li",
-            "bGUYBCABKAgSGgoScmVhZGluZ19kaXNwZXJzaW9uGAUgASgCEhAKCGhhc19m",
-            "b29kGAYgASgIEhQKDHNlcnZlcl9pbmRleBgHIAEoBSJfCgtQcm90b0VkaWJs",
-            "ZRIpCgl0cmFuc2Zvcm0YASABKAsyFi5wYWNtYW4uUHJvdG9UcmFuc2Zvcm0S",
-            "EgoKaXNfY2Fwc3VsZRgCIAEoCBIRCglpc19hY3RpdmUYAyABKAgiYwoOUHJv",
-            "dG9UcmFuc2Zvcm0SJgoIcG9zaXRpb24YASABKAsyFC5wYWNtYW4uUHJvdG9W",
-            "ZWN0b3IzEikKCHJvdGF0aW9uGAIgASgLMhcucGFjbWFuLlByb3RvUXVhdGVy",
-            "bmlvbiIkCgxQcm90b1ZlY3RvcjISCQoBeBgBIAEoAhIJCgF5GAIgASgCIi8K",
-            "DFByb3RvVmVjdG9yMxIJCgF4GAEgASgCEgkKAXkYAiABKAISCQoBehgDIAEo",
-            "AiI9Cg9Qcm90b1F1YXRlcm5pb24SCQoBeBgBIAEoAhIJCgF5GAIgASgCEgkK",
-            "AXoYAyABKAISCQoBdxgEIAEoAkIbqgIYUGFjTWFuLk5ldHdvcmsuR2VuZXJh",
-            "dGVkYgZwcm90bzM="));
+            "GAcgASgFEhgKEGZpeGVkX2RlbHRhX3RpbWUYCCABKAISHwoXc3RlcHNfc2lu",
+            "Y2VfbWF0Y2hfc3RhcnQYCSABKAUSFwoPc3RlcHNfcmVtYWluaW5nGAogASgF",
+            "Ik4KEVByb3RvUGFjTWFuQWN0aW9uEioKDGFjY2VsZXJhdGlvbhgBIAEoCzIU",
+            "LnBhY21hbi5Qcm90b1ZlY3RvcjISDQoFaW5kZXgYAiABKAUirwMKEFByb3Rv",
+            "UGFjTWFuU3RhdGUSKQoJdHJhbnNmb3JtGAEgASgLMhYucGFjbWFuLlByb3Rv",
+            "VHJhbnNmb3JtEhQKDGZvb2RfY2FycmllZBgCIAEoBRIRCglpc19zY2FyZWQY",
+            "AyABKAgSEAoIaXNfZ2hvc3QYBCABKAgSEgoKaXNfcG93ZXJlZBgFIAEoCBIY",
+            "ChBzY2FyZWRfcmVtYWluaW5nGAYgASgBEicKCWRpcmVjdGlvbhgHIAEoCzIU",
+            "LnBhY21hbi5Qcm90b1ZlY3RvcjISEQoJbWFnbml0dWRlGAggASgCEiYKCHZl",
+            "bG9jaXR5GAkgASgLMhQucGFjbWFuLlByb3RvVmVjdG9yMxIuChBhbmd1bGFy",
+            "X3ZlbG9jaXR5GAogASgLMhQucGFjbWFuLlByb3RvVmVjdG9yMxILCgN0YWcY",
+            "CyABKAkSNQoMb2JzZXJ2YXRpb25zGAwgASgLMh8ucGFjbWFuLlByb3RvUGFj",
+            "TWFuT2JzZXJ2YXRpb25zEhQKDHNlcnZlcl9pbmRleBgNIAEoBRIZChFsYXN0",
+            "X3Jlc3Bhd25fc3RlcBgOIAEoBSKaAQoXUHJvdG9QYWNNYW5PYnNlcnZhdGlv",
+            "bnMSNAoMb2JzZXJ2YXRpb25zGAEgAygLMh4ucGFjbWFuLlByb3RvUGFjTWFu",
+            "T2JzZXJ2YXRpb24SDQoFaW5kZXgYAiABKAUSHgoWb2JzZXJ2YXRpb25fZml4",
+            "ZWRfdGltZRgDIAEoAhIaChJhZ2VudF9zZXJ2ZXJfaW5kZXgYBCABKAUi6gEK",
+            "FlByb3RvUGFjTWFuT2JzZXJ2YXRpb24SJgoIcG9zaXRpb24YASABKAsyFC5w",
+            "YWNtYW4uUHJvdG9WZWN0b3IzEiYKCHZlbG9jaXR5GAIgASgLMhQucGFjbWFu",
+            "LlByb3RvVmVjdG9yMxIQCghpc19naG9zdBgDIAEoCBIPCgd2aXNpYmxlGAQg",
+            "ASgIEhoKEnJlYWRpbmdfZGlzcGVyc2lvbhgFIAEoAhIQCghoYXNfZm9vZBgG",
+            "IAEoCBIUCgxzZXJ2ZXJfaW5kZXgYByABKAUSGQoRbGFzdF9yZXNwYXduX3N0",
+            "ZXAYCCABKAUiXwoLUHJvdG9FZGlibGUSKQoJdHJhbnNmb3JtGAEgASgLMhYu",
+            "cGFjbWFuLlByb3RvVHJhbnNmb3JtEhIKCmlzX2NhcHN1bGUYAiABKAgSEQoJ",
+            "aXNfYWN0aXZlGAMgASgIImMKDlByb3RvVHJhbnNmb3JtEiYKCHBvc2l0aW9u",
+            "GAEgASgLMhQucGFjbWFuLlByb3RvVmVjdG9yMxIpCghyb3RhdGlvbhgCIAEo",
+            "CzIXLnBhY21hbi5Qcm90b1F1YXRlcm5pb24iJAoMUHJvdG9WZWN0b3IyEgkK",
+            "AXgYASABKAISCQoBeRgCIAEoAiIvCgxQcm90b1ZlY3RvcjMSCQoBeBgBIAEo",
+            "AhIJCgF5GAIgASgCEgkKAXoYAyABKAIiPQoPUHJvdG9RdWF0ZXJuaW9uEgkK",
+            "AXgYASABKAISCQoBeRgCIAEoAhIJCgF6GAMgASgCEgkKAXcYBCABKAJCG6oC",
+            "GFBhY01hbi5OZXR3b3JrLkdlbmVyYXRlZGIGcHJvdG8z"));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { },
           new pbr::GeneratedClrTypeInfo(null, null, new pbr::GeneratedClrTypeInfo[] {
             new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.InitializeRequest), global::PacMan.Network.Generated.InitializeRequest.Parser, new[]{ "ClientId" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.StepRequest), global::PacMan.Network.Generated.StepRequest.Parser, new[]{ "ClientId", "Actions" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.GameState), global::PacMan.Network.Generated.GameState.Parser, new[]{ "Time", "Food", "Capsules", "Agents", "MapName", "ClientId", "ControlledAgentIndex", "FixedDeltaTime" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.GameState), global::PacMan.Network.Generated.GameState.Parser, new[]{ "Time", "Food", "Capsules", "Agents", "MapName", "ClientId", "ControlledAgentIndex", "FixedDeltaTime", "StepsSinceMatchStart", "StepsRemaining" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoPacManAction), global::PacMan.Network.Generated.ProtoPacManAction.Parser, new[]{ "Acceleration", "Index" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoPacManState), global::PacMan.Network.Generated.ProtoPacManState.Parser, new[]{ "Transform", "FoodCarried", "IsScared", "IsGhost", "IsPowered", "ScaredRemaining", "Direction", "Magnitude", "Velocity", "AngularVelocity", "Tag", "Observations", "ServerIndex" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoPacManState), global::PacMan.Network.Generated.ProtoPacManState.Parser, new[]{ "Transform", "FoodCarried", "IsScared", "IsGhost", "IsPowered", "ScaredRemaining", "Direction", "Magnitude", "Velocity", "AngularVelocity", "Tag", "Observations", "ServerIndex", "LastRespawnStep" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoPacManObservations), global::PacMan.Network.Generated.ProtoPacManObservations.Parser, new[]{ "Observations", "Index", "ObservationFixedTime", "AgentServerIndex" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoPacManObservation), global::PacMan.Network.Generated.ProtoPacManObservation.Parser, new[]{ "Position", "Velocity", "IsGhost", "Visible", "ReadingDispersion", "HasFood", "ServerIndex" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoPacManObservation), global::PacMan.Network.Generated.ProtoPacManObservation.Parser, new[]{ "Position", "Velocity", "IsGhost", "Visible", "ReadingDispersion", "HasFood", "ServerIndex", "LastRespawnStep" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoEdible), global::PacMan.Network.Generated.ProtoEdible.Parser, new[]{ "Transform", "IsCapsule", "IsActive" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoTransform), global::PacMan.Network.Generated.ProtoTransform.Parser, new[]{ "Position", "Rotation" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::PacMan.Network.Generated.ProtoVector2), global::PacMan.Network.Generated.ProtoVector2.Parser, new[]{ "X", "Y" }, null, null, null, null),
@@ -528,6 +530,8 @@ namespace PacMan.Network.Generated {
       clientId_ = other.clientId_;
       controlledAgentIndex_ = other.controlledAgentIndex_;
       fixedDeltaTime_ = other.fixedDeltaTime_;
+      stepsSinceMatchStart_ = other.stepsSinceMatchStart_;
+      stepsRemaining_ = other.stepsRemaining_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -630,6 +634,30 @@ namespace PacMan.Network.Generated {
       }
     }
 
+    /// <summary>Field number for the "steps_since_match_start" field.</summary>
+    public const int StepsSinceMatchStartFieldNumber = 9;
+    private int stepsSinceMatchStart_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int StepsSinceMatchStart {
+      get { return stepsSinceMatchStart_; }
+      set {
+        stepsSinceMatchStart_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "steps_remaining" field.</summary>
+    public const int StepsRemainingFieldNumber = 10;
+    private int stepsRemaining_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int StepsRemaining {
+      get { return stepsRemaining_; }
+      set {
+        stepsRemaining_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -653,6 +681,8 @@ namespace PacMan.Network.Generated {
       if (ClientId != other.ClientId) return false;
       if (ControlledAgentIndex != other.ControlledAgentIndex) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(FixedDeltaTime, other.FixedDeltaTime)) return false;
+      if (StepsSinceMatchStart != other.StepsSinceMatchStart) return false;
+      if (StepsRemaining != other.StepsRemaining) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -668,6 +698,8 @@ namespace PacMan.Network.Generated {
       if (ClientId.Length != 0) hash ^= ClientId.GetHashCode();
       if (ControlledAgentIndex != 0) hash ^= ControlledAgentIndex.GetHashCode();
       if (FixedDeltaTime != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(FixedDeltaTime);
+      if (StepsSinceMatchStart != 0) hash ^= StepsSinceMatchStart.GetHashCode();
+      if (StepsRemaining != 0) hash ^= StepsRemaining.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -709,6 +741,14 @@ namespace PacMan.Network.Generated {
         output.WriteRawTag(69);
         output.WriteFloat(FixedDeltaTime);
       }
+      if (StepsSinceMatchStart != 0) {
+        output.WriteRawTag(72);
+        output.WriteInt32(StepsSinceMatchStart);
+      }
+      if (StepsRemaining != 0) {
+        output.WriteRawTag(80);
+        output.WriteInt32(StepsRemaining);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -742,6 +782,14 @@ namespace PacMan.Network.Generated {
         output.WriteRawTag(69);
         output.WriteFloat(FixedDeltaTime);
       }
+      if (StepsSinceMatchStart != 0) {
+        output.WriteRawTag(72);
+        output.WriteInt32(StepsSinceMatchStart);
+      }
+      if (StepsRemaining != 0) {
+        output.WriteRawTag(80);
+        output.WriteInt32(StepsRemaining);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -769,6 +817,12 @@ namespace PacMan.Network.Generated {
       }
       if (FixedDeltaTime != 0F) {
         size += 1 + 4;
+      }
+      if (StepsSinceMatchStart != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(StepsSinceMatchStart);
+      }
+      if (StepsRemaining != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(StepsRemaining);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -799,6 +853,12 @@ namespace PacMan.Network.Generated {
       }
       if (other.FixedDeltaTime != 0F) {
         FixedDeltaTime = other.FixedDeltaTime;
+      }
+      if (other.StepsSinceMatchStart != 0) {
+        StepsSinceMatchStart = other.StepsSinceMatchStart;
+      }
+      if (other.StepsRemaining != 0) {
+        StepsRemaining = other.StepsRemaining;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -847,6 +907,14 @@ namespace PacMan.Network.Generated {
             FixedDeltaTime = input.ReadFloat();
             break;
           }
+          case 72: {
+            StepsSinceMatchStart = input.ReadInt32();
+            break;
+          }
+          case 80: {
+            StepsRemaining = input.ReadInt32();
+            break;
+          }
         }
       }
     #endif
@@ -892,6 +960,14 @@ namespace PacMan.Network.Generated {
           }
           case 69: {
             FixedDeltaTime = input.ReadFloat();
+            break;
+          }
+          case 72: {
+            StepsSinceMatchStart = input.ReadInt32();
+            break;
+          }
+          case 80: {
+            StepsRemaining = input.ReadInt32();
             break;
           }
         }
@@ -1183,6 +1259,7 @@ namespace PacMan.Network.Generated {
       tag_ = other.tag_;
       observations_ = other.observations_ != null ? other.observations_.Clone() : null;
       serverIndex_ = other.serverIndex_;
+      lastRespawnStep_ = other.lastRespawnStep_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -1348,6 +1425,18 @@ namespace PacMan.Network.Generated {
       }
     }
 
+    /// <summary>Field number for the "last_respawn_step" field.</summary>
+    public const int LastRespawnStepFieldNumber = 14;
+    private int lastRespawnStep_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int LastRespawnStep {
+      get { return lastRespawnStep_; }
+      set {
+        lastRespawnStep_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -1376,6 +1465,7 @@ namespace PacMan.Network.Generated {
       if (Tag != other.Tag) return false;
       if (!object.Equals(Observations, other.Observations)) return false;
       if (ServerIndex != other.ServerIndex) return false;
+      if (LastRespawnStep != other.LastRespawnStep) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -1396,6 +1486,7 @@ namespace PacMan.Network.Generated {
       if (Tag.Length != 0) hash ^= Tag.GetHashCode();
       if (observations_ != null) hash ^= Observations.GetHashCode();
       if (ServerIndex != 0) hash ^= ServerIndex.GetHashCode();
+      if (LastRespawnStep != 0) hash ^= LastRespawnStep.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -1466,6 +1557,10 @@ namespace PacMan.Network.Generated {
         output.WriteRawTag(104);
         output.WriteInt32(ServerIndex);
       }
+      if (LastRespawnStep != 0) {
+        output.WriteRawTag(112);
+        output.WriteInt32(LastRespawnStep);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1528,6 +1623,10 @@ namespace PacMan.Network.Generated {
         output.WriteRawTag(104);
         output.WriteInt32(ServerIndex);
       }
+      if (LastRespawnStep != 0) {
+        output.WriteRawTag(112);
+        output.WriteInt32(LastRespawnStep);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1576,6 +1675,9 @@ namespace PacMan.Network.Generated {
       }
       if (ServerIndex != 0) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(ServerIndex);
+      }
+      if (LastRespawnStep != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(LastRespawnStep);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -1642,6 +1744,9 @@ namespace PacMan.Network.Generated {
       }
       if (other.ServerIndex != 0) {
         ServerIndex = other.ServerIndex;
+      }
+      if (other.LastRespawnStep != 0) {
+        LastRespawnStep = other.LastRespawnStep;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -1725,6 +1830,10 @@ namespace PacMan.Network.Generated {
             ServerIndex = input.ReadInt32();
             break;
           }
+          case 112: {
+            LastRespawnStep = input.ReadInt32();
+            break;
+          }
         }
       }
     #endif
@@ -1805,6 +1914,10 @@ namespace PacMan.Network.Generated {
           }
           case 104: {
             ServerIndex = input.ReadInt32();
+            break;
+          }
+          case 112: {
+            LastRespawnStep = input.ReadInt32();
             break;
           }
         }
@@ -2144,6 +2257,7 @@ namespace PacMan.Network.Generated {
       readingDispersion_ = other.readingDispersion_;
       hasFood_ = other.hasFood_;
       serverIndex_ = other.serverIndex_;
+      lastRespawnStep_ = other.lastRespawnStep_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -2237,6 +2351,18 @@ namespace PacMan.Network.Generated {
       }
     }
 
+    /// <summary>Field number for the "last_respawn_step" field.</summary>
+    public const int LastRespawnStepFieldNumber = 8;
+    private int lastRespawnStep_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int LastRespawnStep {
+      get { return lastRespawnStep_; }
+      set {
+        lastRespawnStep_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -2259,6 +2385,7 @@ namespace PacMan.Network.Generated {
       if (!pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.Equals(ReadingDispersion, other.ReadingDispersion)) return false;
       if (HasFood != other.HasFood) return false;
       if (ServerIndex != other.ServerIndex) return false;
+      if (LastRespawnStep != other.LastRespawnStep) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -2273,6 +2400,7 @@ namespace PacMan.Network.Generated {
       if (ReadingDispersion != 0F) hash ^= pbc::ProtobufEqualityComparers.BitwiseSingleEqualityComparer.GetHashCode(ReadingDispersion);
       if (HasFood != false) hash ^= HasFood.GetHashCode();
       if (ServerIndex != 0) hash ^= ServerIndex.GetHashCode();
+      if (LastRespawnStep != 0) hash ^= LastRespawnStep.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -2319,6 +2447,10 @@ namespace PacMan.Network.Generated {
         output.WriteRawTag(56);
         output.WriteInt32(ServerIndex);
       }
+      if (LastRespawnStep != 0) {
+        output.WriteRawTag(64);
+        output.WriteInt32(LastRespawnStep);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -2357,6 +2489,10 @@ namespace PacMan.Network.Generated {
         output.WriteRawTag(56);
         output.WriteInt32(ServerIndex);
       }
+      if (LastRespawnStep != 0) {
+        output.WriteRawTag(64);
+        output.WriteInt32(LastRespawnStep);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -2387,6 +2523,9 @@ namespace PacMan.Network.Generated {
       }
       if (ServerIndex != 0) {
         size += 1 + pb::CodedOutputStream.ComputeInt32Size(ServerIndex);
+      }
+      if (LastRespawnStep != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(LastRespawnStep);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -2426,6 +2565,9 @@ namespace PacMan.Network.Generated {
       }
       if (other.ServerIndex != 0) {
         ServerIndex = other.ServerIndex;
+      }
+      if (other.LastRespawnStep != 0) {
+        LastRespawnStep = other.LastRespawnStep;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -2476,6 +2618,10 @@ namespace PacMan.Network.Generated {
             ServerIndex = input.ReadInt32();
             break;
           }
+          case 64: {
+            LastRespawnStep = input.ReadInt32();
+            break;
+          }
         }
       }
     #endif
@@ -2523,6 +2669,10 @@ namespace PacMan.Network.Generated {
           }
           case 56: {
             ServerIndex = input.ReadInt32();
+            break;
+          }
+          case 64: {
+            LastRespawnStep = input.ReadInt32();
             break;
           }
         }
