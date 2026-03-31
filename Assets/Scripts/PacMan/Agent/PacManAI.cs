@@ -64,7 +64,9 @@ namespace PacMan.Agent
 
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
-            if (fetchEnemyObservations.Observations.Length > 0) {PacManBlackboard bb;}
+
+            
+            PacManBlackboard bb;
             if (useManualBlackboard)
             {
                 bb = debugBlackboard;
@@ -138,6 +140,7 @@ namespace PacMan.Agent
                 Acceleration = accel
             };
             }
+        
         private Vector2 GetAttackAcceleration()
         {
             // Blue attacks to the right, Red attacks to the left
@@ -195,92 +198,9 @@ namespace PacMan.Agent
 
             if ((isBlue && Input.GetKey("w")) || (isRed && Input.GetKey(KeyCode.UpArrow)))
             {
-                _initialDroneState = _agent.transform;
-                var agentPos = _initialDroneState.position;
-                var closestPos =  Vector3.zero;
-                var closestDistance = float.MaxValue;
-                foreach (var foodPosition in activeFoodPositions)
-                {
-                    //Check if food is on oppenents side
-                    var foodPos = foodPosition.transform.position;
-                    var startPos = _agent.globalStartPosition;
-                    var isEatableFood = (startPos.x * foodPos.x < 0); //Food is eatable if on opposite side
-                    
-                    if (!isEatableFood) //If not eatable
-                    {
-                        continue;
-                    }
-                    
-                    //Check distance to food
-                    var curDistance = Vector3.Distance(foodPos, agentPos);
-
-                    if (closestDistance <= curDistance) //If not the closest food
-                    {
-                        continue;
-                    }
-                    //Assign current food as closest
-                    closestDistance = curDistance;
-                    closestPos = foodPos;
-                }
-                
-                var size = 0.5f;
-                Debug.DrawLine(closestPos - Vector3.up * size, closestPos + Vector3.up * size, Color.red, 100f);
-                Debug.DrawLine(closestPos - Vector3.left * size, closestPos + Vector3.left * size, Color.red, 100f);
-                Debug.DrawLine(closestPos - Vector3.forward * size, closestPos + Vector3.forward * size, Color.red, 100f);
-
-                _goalPosition = closestPos;
-                _hasGoal = true;
-                
-                Astar astar = new();
-                List<Vector3> astarPath = astar.PlanPathAStar(agentPos, _goalPosition);
-        
-                if (astarPath.Count < 2)
-                {
-                    Debug.LogError("A* failed - no path found for drone");
-                }
-        
-                List<Node> nodes = new();
-                foreach (Vector3 pos in astarPath)
-                {
-                    nodes.Add(new Node(pos.x, pos.z));
-                }
-                
-                var groundPlane = GameObject.Find("GroundPlane");
-                var groundCollider = groundPlane.GetComponent<Collider>();
-                var smoother = new CGSmoother(agentPos.y, groundCollider);
-                nodes = smoother.GetSmoothedPath(nodes);
-                
-                
-                _waypoints = nodes;
-        
-                // Creates the new PD Controller for the new path
-                _droneControlling = new DroneControlling(nodes, _goalPosition, _initialDroneState);
+                z = 1;
             }
-            
-            // Calculates the move
-            _droneControlling.PDCalculateMove(droneTransform:_initialDroneState);
-        
-            var x = _droneControlling.h;
-            var z = _droneControlling.v;
-            
-            /*
-            var vo = new VO(vehicleTransform:_initialDroneState, 15f);
-        
-            Collider[] obstacles = Physics.OverlapSphere(transform.position, 20f, LayerMask.GetMask("Obstacle"));
-            GameObject[] pedestrians = GameObject.FindGameObjectsWithTag("Searcher");
-        
-            (finalH, finalV) = vo.GetSafeAcceleration(myTransform:_initialDroneState, currentVelocity:velocity, 
-                intendedH:finalH, intendedV:finalV, otherDrones:, pedestrians:pedestrians, staticObstacles:obstacles);
-            */
-            
-            var droneAction = new PacManAction
-            {
-                Acceleration = new Vector2(x, z), // Controller converts to normalized if magnitude > 1. Magnitude 0.3 guarantees not observed
-            };
 
-            Debug.Log($"Drone acceleration: {droneAction.Acceleration.magnitude}, Intended move: {droneAction.Acceleration}, Velocity: {velocity}");
-            
-            return droneAction;
             if ((isBlue && Input.GetKey("s")) || (isRed && Input.GetKey(KeyCode.DownArrow)))
             {
                 z = -1;
