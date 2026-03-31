@@ -6,6 +6,7 @@ using Scripts.Map;
 using UnityEngine;
 using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
+using PacMan.Agent.BehaviorTreeFolder;
 using TMPro;
 using UnityEngine;
 using Scripts.Map;
@@ -63,8 +64,7 @@ namespace PacMan.Agent
 
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
-            if (fetchEnemyObservations.Observations.Length > 0)
-            PacManBlackboard bb;
+            if (fetchEnemyObservations.Observations.Length > 0) {PacManBlackboard bb;}
             if (useManualBlackboard)
             {
                 bb = debugBlackboard;

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace PacMan.Agent
+namespace PacMan.Agent.BehaviorTreeFolder
 {
     public enum BTStatus {Success, Failure, Running}
 
