@@ -6,10 +6,13 @@ using Scripts.Map;
 using UnityEngine;
 using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
+using TMPro;
+using UnityEngine;
+using Scripts.Map;
 
 namespace PacMan.Agent
 {
-    public class PacManAI : MonoBehaviour
+    public class PacManAIDebugBT : PacManAI
     {
         protected PacManAgentManager _agent;
         protected ObstacleMap _obstacleMap;
@@ -19,17 +22,26 @@ namespace PacMan.Agent
         private List<Node> _waypoints;
         private DroneControlling _droneControlling;
         private Transform _initialDroneState;
+        [Header("Debug")]
+        [SerializeField] private bool useManualBlackboard = false;
+        [SerializeField] private PacManBlackboard debugBlackboard = new();
+        [SerializeField] private TextMeshPro debugText;
+        [SerializeField] private bool allowManualOverride = true;
+        private BehaviorTree _behaviorTree;
+        private AgentMode _currentMode;
 
-        public virtual void Initialize(MapManager mapManager) // Ticked when all agents spawned by the network and seen properly by the client. Not the same as Start or Awake in this assignment.
+        public override void Initialize(MapManager mapManager)
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
             _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), Vector3.one);
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
+            base.Initialize(mapManager);
+            _behaviorTree = new BehaviorTree();
         }
 
-        public virtual PacManAction Tick() //The Tick from the network controller
+        public override PacManAction Tick()
         {
             _agent.GetTimeRemaining();
             _agent.GetScore();
@@ -52,16 +64,136 @@ namespace PacMan.Agent
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
             if (fetchEnemyObservations.Observations.Length > 0)
+            PacManBlackboard bb;
+            if (useManualBlackboard)
             {
-                // Debug.Log(fetchEnemyObservations.ObservationFixedTime);
+                bb = debugBlackboard;
+            }
+            else
+            {
+                var visibleEnemies = _agent.GetVisibleEnemyAgents();
+
+                bb = new PacManBlackboard
+                {
+                    isGhost = _agent.IsGhost(),
+                    isScared = _agent.IsScared(),
+                    carriedFood = _agent.GetCarriedFoodCount(),
+                    visibleEnemyCount = visibleEnemies.Count,
+                    enemyVisible = visibleEnemies.Count > 0,
+                    shouldReturnHome = _agent.GetCarriedFoodCount() >= 3
+                };
+
+                debugBlackboard = bb;
             }
 
-            // Since the RigidBody is updated server side and the client only syncs position, rigidbody.Velocity does not report a velocity
-            var velocity = _agent.GetVelocity(); // Use the manager method to get the true velocity from the server
-            // friendlyAgentManager.GetVelocity(); // Given the damping, max velocity magnitude is around 2.34
+            _currentMode = _behaviorTree.Evaluate(bb);
 
-            // If no goal is assigned
-            if (!_hasGoal)
+            if (debugText != null)
+            {
+                debugText.text =
+                    $"Mode: {_currentMode}\n" +
+                    $"Ghost: {bb.isGhost}\n" +
+                    $"Scared: {bb.isScared}\n" +
+                    $"Food: {bb.carriedFood}\n" +
+                    $"VisibleEnemies: {bb.visibleEnemyCount}\n" +
+                    $"Return: {bb.shouldReturnHome}";
+            }
+
+            Debug.Log($"[{gameObject.name}] Mode = {_currentMode}");
+            Vector2 accel = Vector2.zero;
+
+            switch (_currentMode)
+            {
+                case AgentMode.Attack:
+                    accel = GetAttackAcceleration();
+                    break;
+
+                case AgentMode.ReturnHome:
+                    accel = GetReturnHomeAcceleration();
+                    break;
+
+                case AgentMode.Defend:
+                    accel = GetDefendAcceleration();
+                    break;
+
+                case AgentMode.Evade:
+                    accel = GetEvadeAcceleration();
+                    break;
+
+                case AgentMode.Patrol:
+                default:
+                    accel = GetPatrolAcceleration();
+                    break;
+            }
+
+            // Manual override with keyboard
+            Vector2 manualAccel = GetManualAcceleration();
+            if (manualAccel != Vector2.zero)
+            {
+                accel = manualAccel;
+            }
+
+            return new PacManAction
+            {
+                Acceleration = accel
+            };
+            }
+        private Vector2 GetAttackAcceleration()
+        {
+            // Blue attacks to the right, Red attacks to the left
+            float x = CompareTag("Blue") ? 1f : -1f;
+            return new Vector2(x, 0f);
+        }
+
+        private Vector2 GetReturnHomeAcceleration()
+        {
+            // Blue home is left, Red home is right
+            float x = CompareTag("Blue") ? -1f : 1f;
+            return new Vector2(x, 0f);
+        }
+
+        private Vector2 GetPatrolAcceleration()
+        {
+            // Stay still for now
+            return Vector2.zero;
+        }
+
+        private Vector2 GetDefendAcceleration()
+        {
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+            if (visibleEnemies != null && visibleEnemies.Count > 0)
+            {
+                Vector3 myPos = transform.localPosition;
+                Vector3 enemyPos = visibleEnemies[0].transform.localPosition;
+                Vector3 dir = (enemyPos - myPos).normalized;
+                return new Vector2(dir.x, dir.z);
+            }
+
+            return Vector2.zero;
+        }
+
+        private Vector2 GetEvadeAcceleration()
+        {
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+            if (visibleEnemies != null && visibleEnemies.Count > 0)
+            {
+                Vector3 myPos = transform.localPosition;
+                Vector3 enemyPos = visibleEnemies[0].transform.localPosition;
+                Vector3 dir = (myPos - enemyPos).normalized;
+                return new Vector2(dir.x, dir.z);
+            }
+
+            return GetReturnHomeAcceleration();
+        }
+        private Vector2 GetManualAcceleration()
+        {
+            int x = 0;
+            int z = 0;
+
+            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+            bool isRed = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Red;
+
+            if ((isBlue && Input.GetKey("w")) || (isRed && Input.GetKey(KeyCode.UpArrow)))
             {
                 _initialDroneState = _agent.transform;
                 var agentPos = _initialDroneState.position;
@@ -149,6 +281,45 @@ namespace PacMan.Agent
             Debug.Log($"Drone acceleration: {droneAction.Acceleration.magnitude}, Intended move: {droneAction.Acceleration}, Velocity: {velocity}");
             
             return droneAction;
+            if ((isBlue && Input.GetKey("s")) || (isRed && Input.GetKey(KeyCode.DownArrow)))
+            {
+                z = -1;
+            }
+
+            if ((isBlue && Input.GetKey("a")) || (isRed && Input.GetKey(KeyCode.LeftArrow)))
+            {
+                x = -1;
+            }
+
+            if ((isBlue && Input.GetKey("d")) || (isRed && Input.GetKey(KeyCode.RightArrow)))
+            {
+                x = 1;
+            }
+
+            return new Vector2(x, z);
+        }
+        private void OnGUI()
+        {
+            if (!Application.isPlaying)
+                return;
+
+            Vector3 worldPos = transform.position + Vector3.up * 2f;
+            Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
+
+            if (screenPos.z > 0f)
+            {
+                float x = screenPos.x;
+                float y = Screen.height - screenPos.y;
+
+                GUI.Label(
+                    new Rect(x, y, 220f, 120f),
+                    $"Mode: {_currentMode}\n" +
+                    $"Ghost: {debugBlackboard.isGhost}\n" +
+                    $"Food: {debugBlackboard.carriedFood}\n" +
+                    $"Enemies: {debugBlackboard.visibleEnemyCount}\n" +
+                    $"Return: {debugBlackboard.shouldReturnHome}"
+                );
+            }
         }
         
         
