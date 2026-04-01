@@ -50,8 +50,8 @@ namespace PacMan.Local
             PacManObject = transform.Find("visuals/pacman").gameObject;
             foodCarried = new List<GameObject>();
             _aiInitialized = false;
-            _latestKnownObservation.AgentServerIndex = serverIndex;
             _lastRespawnStep = PacManGameManager != null ? PacManGameManager.CurrentSimulationStep : 0;
+            ResetMatchScopedState();
 
             ConfigureForCurrentMode();
 
@@ -61,6 +61,18 @@ namespace PacMan.Local
             }
 
             _ready = true;
+        }
+
+        private void ResetMatchScopedState()
+        {
+            _nextObservationTime = 0f;
+            _latestKnownObservation = new PacManObservations
+            {
+                Index = 0,
+                ObservationFixedTime = 0f,
+                AgentServerIndex = serverIndex,
+                Observations = System.Array.Empty<PacManObservation>()
+            };
         }
 
         protected virtual void ConfigureForCurrentMode()
@@ -255,7 +267,7 @@ namespace PacMan.Local
 
             if (IsGhost() && other.gameObject.name == "Capsule")
             {
-                RespawnAtStart();
+                PacManGameManager.RespawnAgentAtStart(this);
             }
         }
 
@@ -267,12 +279,12 @@ namespace PacMan.Local
                                                                                               !IsGhost() && !otherAgent.IsGhost()))
             {
                 PacManGameManager.DropFood(this, false);
-                RespawnAtStart();
+                PacManGameManager.RespawnAgentAtStart(this);
             }
 
             if (otherAgent != null && other.gameObject.tag != tag && IsGhost() && isScared && !otherAgent.IsGhost())
             {
-                RespawnAtStart();
+                PacManGameManager.RespawnAgentAtStart(this);
             }
         }
 
@@ -352,12 +364,6 @@ namespace PacMan.Local
             }
 
             _latestKnownObservation = observations;
-        }
-
-        public void RespawnAtStart(int respawnStep = -1)
-        {
-            transform.position = globalStartPosition;
-            SetLastRespawnStep(respawnStep >= 0 ? respawnStep : GetStepsSinceMatchStart());
         }
 
         public Vector3 GetStartPosition()

@@ -28,7 +28,6 @@ namespace PacMan.Game
         public int redScore;
         public int blueScore;
 
-        protected float StartTime;
         public float matchTime;
         public float matchLength = 240; //From original 3000 / 4
         private int _stepsSinceMatchStart;
@@ -68,7 +67,6 @@ namespace PacMan.Game
 
         void Awake()
         {
-            StartTime = Time.time;
             _pacManWorker = GetComponent<PacManWorker>();
             _selector = FindFirstObjectByType<PacManManagerModeSelector>();
             ConfigureCommandLineRecording();
@@ -143,7 +141,7 @@ namespace PacMan.Game
             }
         }
 
-        public void RestartGame()
+        public virtual void RestartGame()
         {
             EnsureCollectionsInitialized();
             foodList.Where(food => food != null).ToList().ForEach(food => _pacManWorker.RemoveObject(food));
@@ -158,14 +156,15 @@ namespace PacMan.Game
             {
                 agents.ForEach(agent => agent.InitializeAIIfNeeded());
             }
+
             LogServerOwnershipLayout();
             gameRecorder?.StartRecording(this);
+            matchTime = 0;
         }
 
         public void StartGame()
         {
             EnsureCollectionsInitialized();
-            StartTime = Time.time;
             ApplyAuthoritativeSimulationState(0f, 0, CalculateStepsRemaining(0, Time.fixedDeltaTime));
             _waitingForClientActions = false;
             _loggedServerOwnershipLayout = false;
@@ -177,7 +176,11 @@ namespace PacMan.Game
 
             if (agents.Count == mapManager.startPositions.Count) //TODO: Variable agent counts map to map?
             {
-                agents.ForEach(agent => _pacManWorker.ResetAgent(agent.gameObject));
+                agents.ForEach(agent =>
+                {
+                    _pacManWorker.ResetAgent(agent.gameObject);
+                    RespawnAgentAtStart(agent);
+                });
             }
 
             agentsPerTeam = mapManager.startPositions.Count / 2;
@@ -288,7 +291,9 @@ namespace PacMan.Game
             var startsTransform = mapManager != null ? mapManager.transform.Find("Starts") : null;
             var startsOrigin = startsTransform != null
                 ? startsTransform.position
-                : mapManager != null ? mapManager.transform.position : Vector3.zero;
+                : mapManager != null
+                    ? mapManager.transform.position
+                    : Vector3.zero;
 
             for (var i = 0; i < count; i++)
             {
@@ -738,6 +743,12 @@ namespace PacMan.Game
             {
                 capsules.Add(_pacManWorker.CreateEdible(gameObject, capsulePrefab, capsulesObject.position + transform.localPosition));
             }
+        }
+
+        public virtual void RespawnAgentAtStart(PacManAgentManager agent)
+        {
+            agent.transform.position = agent.globalStartPosition;
+            agent.SetLastRespawnStep( CurrentSimulationStep);
         }
 
         public void DropFood(PacManAgentManager pacManAgentAgent, bool success)
