@@ -128,7 +128,7 @@ namespace PacMan.Local
                     var pacManObservation = new PacManObservation
                     {
                         Visible = pair.visible,
-                        IsGhost = isGhost,
+                        IsGhost = agent.isGhost,
                         HasFood = agent.foodCarried.Count > 0,
                         Position = agent.gameObject.transform.localPosition,
                         ServerIndex = agent.serverIndex,
