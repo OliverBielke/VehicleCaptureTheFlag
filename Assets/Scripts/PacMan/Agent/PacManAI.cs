@@ -15,14 +15,13 @@ namespace PacMan.Agent
 {
     public class PacManAIDebugBT : PacManAI
     {
-        protected PacManAgentManager _agent;
-        protected ObstacleMap _obstacleMap;
-        protected MapManager _mapManager;
         private bool _hasGoal;
         private Vector3 _goalPosition;
         private List<Node> _waypoints;
+        private CGSmoother _pathSmoother;
         private DroneControlling _droneControlling;
         private Transform _initialDroneState;
+        
         [Header("Debug")]
         [SerializeField] private bool useManualBlackboard = false;
         [SerializeField] private PacManBlackboard debugBlackboard = new();
@@ -40,6 +39,10 @@ namespace PacMan.Agent
             _hasGoal = false;
             base.Initialize(mapManager);
             _behaviorTree = new BehaviorTree();
+            
+            var groundPlane = GameObject.Find("GroundPlane");
+            var groundCollider = groundPlane.GetComponent<Collider>();
+            _pathSmoother = new CGSmoother(_agent.transform.position.y, groundCollider);
         }
 
         public override PacManAction Tick()
@@ -107,7 +110,7 @@ namespace PacMan.Agent
             switch (_currentMode)
             {
                 case AgentMode.Attack:
-                    accel = GetAttackAcceleration();
+                    accel = GetAttackAcceleration(activeFoodPositions);
                     break;
 
                 case AgentMode.ReturnHome:
@@ -141,11 +144,28 @@ namespace PacMan.Agent
             };
             }
         
-        private Vector2 GetAttackAcceleration()
+        private Vector2 GetAttackAcceleration(List<GameObject> activeFoodPositions)
         {
-            // Blue attacks to the right, Red attacks to the left
-            float x = CompareTag("Blue") ? 1f : -1f;
-            return new Vector2(x, 0f);
+            if (!_hasGoal)
+            {
+                // Find closest food
+                var gf = new GoalFinding(agent: _agent);
+                var closestFood = gf.GetClosestEatableFood(activeFoodPositions, debug: true);
+                _goalPosition = closestFood;
+                
+                //Make the new path
+                MakePath();
+                
+                // Now pacman has a goal
+                _hasGoal = true;
+            }
+            
+            _droneControlling.PDCalculateMove(droneTransform:_initialDroneState);
+        
+            var x = _droneControlling.h;
+            var z = _droneControlling.v;
+            
+            return new Vector2(x, z);
         }
 
         private Vector2 GetReturnHomeAcceleration()
@@ -218,6 +238,35 @@ namespace PacMan.Agent
 
             return new Vector2(x, z);
         }
+
+
+        /// <summary>
+        /// Calculates the new path based on the _goalPosition and stores it in _waypoints.
+        /// Also initializes _droneControlling. 
+        /// </summary>
+        private void MakePath()
+        {
+            // Find the path
+            Astar aStar = new();
+            _initialDroneState = _agent.transform;
+            var curPos = _initialDroneState.position;
+            List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition);
+                
+            // Make into nodes
+            List<Node> nodes = new();
+            foreach (Vector3 pos in aStarPath)
+            {
+                nodes.Add(new Node(pos.x, pos.z));
+            }
+                
+            //Smooth the path
+            _waypoints = _pathSmoother.GetSmoothedPath(nodes);
+        
+            // Creates the new PD Controller for the new path
+            _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState);
+        }
+        
+        
         private void OnGUI()
         {
             if (!Application.isPlaying)
