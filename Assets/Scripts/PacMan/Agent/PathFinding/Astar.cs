@@ -3,15 +3,21 @@ using System.Linq;
 using UnityEngine;
 using Quaternion = UnityEngine.Quaternion;
 using Vector3 = UnityEngine.Vector3;
-
+using Scripts.Map;
 
 namespace PacMan.Agent.PathFinding
 {
     public class Astar
     {
+        private readonly ObstacleMap _obstacleMap;
         private readonly List<Vector3> _astarExploredNodes = new();
         
         
+        public Astar(ObstacleMap obstacleMap)
+        {
+            _obstacleMap = obstacleMap;
+        }
+
         /// <summary>
         /// Run the A* algorithm. 
         /// </summary>
@@ -20,10 +26,9 @@ namespace PacMan.Agent.PathFinding
         /// <returns>The planned path. </returns>
         public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal)
         {
-            const float gridSize = 0.2f;
-            const float carRadius = 0.3f;
+            const float gridSize = 0.1f;
             
-            start = RoundToGrid(start, gridSize);
+            start = FindNearestFreeCell(RoundToGrid(start, gridSize), gridSize);
             goal = RoundToGrid(goal, gridSize);
             
             List<AStarNode> openSet = new();
@@ -34,7 +39,13 @@ namespace PacMan.Agent.PathFinding
             
             const int maxIterations = 50000;
             var iter = 0;
-            
+            Debug.Log($"A* start = {start}, trav = {_obstacleMap.GetLocalPointTraversibility(start)}");
+            Debug.Log($"A* goal  = {goal}, trav = {_obstacleMap.GetLocalPointTraversibility(goal)}");
+
+            foreach (Vector3 n in GetNeighbors(start, gridSize))
+            {
+                Debug.Log($"neighbor {n} -> {_obstacleMap.GetLocalPointTraversibility(n)}");
+            }
             while (openSet.Count > 0 && iter < maxIterations)
             {
                 iter++;
@@ -57,7 +68,7 @@ namespace PacMan.Agent.PathFinding
                     if (closedSet.Contains(neighborPos))
                         continue;
                     
-                    if (!IsTraversableAStar(neighborPos, carRadius))
+                    if (!IsTraversableAStar(neighborPos))
                         continue;
                     
                     AStarNode neighborNode = openSet.FirstOrDefault(n => n.Position == neighborPos);
@@ -75,7 +86,7 @@ namespace PacMan.Agent.PathFinding
             }
             
             Debug.LogError($"A* failed after {iter} iterations. Explored {_astarExploredNodes.Count} nodes, OpenSet empty: {openSet.Count == 0}");
-            return new List<Vector3> { start, goal };
+            return null;
         }
         
         
@@ -216,21 +227,47 @@ namespace PacMan.Agent.PathFinding
         /// Checks if a position is traversable. 
         /// </summary>
         /// <param name="position">The position we want to check. </param>
-        /// <param name="radius">Radius of the vehicle. </param>
         /// <returns>True if the position is traversable and false otherwise. </returns>
-        private static bool IsTraversableAStar(Vector3 position, float radius)
+        private bool IsTraversableAStar(Vector3 position)
         {
-            var obstacleLayer = LayerMask.GetMask("Obstacle");
-    
-            // Check a box at this position with the given radius
-            var isBlocked = Physics.CheckBox(
-                position,
-                new Vector3(radius, 0.5f, radius), 
-                Quaternion.identity,
-                obstacleLayer
-            );
-    
-            return !isBlocked;
+            if (_obstacleMap == null)
+                return false;
+
+            return _obstacleMap.GetLocalPointTraversibility(position) == ObstacleMap.Traversability.Free;
         }
+
+        /// <summary>
+        /// Finds nearest traversable cell. 
+        /// </summary>
+        /// <param name="origin"> Coordinate to check </param>
+        /// <param name="gridSize"> Size of the grids </param>
+        /// <param name="maxRadius"> Radius to check snap </param>
+        /// <returns>True if the position is traversable and false otherwise. </returns>
+        private Vector3 FindNearestFreeCell(Vector3 origin, float gridSize, int maxRadius = 3)
+        {
+            if (IsTraversableAStar(origin))
+                return origin;
+
+            for (int r = 1; r <= maxRadius; r++)
+            {
+                for (int dx = -r; dx <= r; dx++)
+                {
+                    for (int dz = -r; dz <= r; dz++)
+                    {
+                        Vector3 candidate = new Vector3(
+                            origin.x + dx * gridSize,
+                            origin.y,
+                            origin.z + dz * gridSize
+                        );
+
+                        if (IsTraversableAStar(candidate))
+                            return candidate;
+                    }
+                }
+            }
+
+            return origin;
+        }
+
     }
 }

@@ -30,11 +30,24 @@ namespace PacMan.Agent.PathFinding
         private const float MAX_GRADIENT = 100f;
         
         private const float RIGHT_DRIVE = 0.0f; //Pushes path to right side
-    
-    public CGSmoother(float carHeight, Collider map)
+        /* Shared cache to speed up computations */
+        private static bool _cacheReady = false;
+        private static Vector2[][] _sharedDistMap;
+        private static Vector3 _sharedDistStart;
+        private static float _sharedStepX;
+        private static float _sharedStepZ;
+        private static int _cachedMapInstanceId = -1;
+        private static float _cachedCarHeight = -1f;
+        public CGSmoother(float carHeight, Collider map)
         {
             this.carHeight = carHeight;
-            CreateDistanceMap(map);
+
+            EnsureDistanceMapCached(map, carHeight);
+
+            this.distMap = _sharedDistMap;
+            this.distStart = _sharedDistStart;
+            this.stepX = _sharedStepX;
+            this.stepZ = _sharedStepZ;
         }
 
         private float carHeight { get; set; }
@@ -291,8 +304,92 @@ namespace PacMan.Agent.PathFinding
         {
             return new Vector2(v3.x, v3.z);
         }
-        
-        
+        private static void EnsureDistanceMapCached(Collider map, float carHeight)
+        {
+            int mapId = map.GetInstanceID();
+
+            if (_cacheReady &&
+                _cachedMapInstanceId == mapId &&
+                Mathf.Abs(_cachedCarHeight - carHeight) < 0.001f)
+            {
+                return;
+            }
+
+            BuildDistanceMap(map, carHeight);
+
+            _cachedMapInstanceId = mapId;
+            _cachedCarHeight = carHeight;
+            _cacheReady = true;
+        }
+        private static void BuildDistanceMap(Collider map, float carHeight)
+        {
+            Vector3 mapOrigin = map.bounds.center;
+            Vector3 mapExtents = map.bounds.extents;
+            _sharedDistStart = mapOrigin - mapExtents;
+            _sharedStepX = mapExtents.x * 2 / (DISTANCE_MAP_RESOLUTION - 1);
+            _sharedStepZ = mapExtents.z * 2 / (DISTANCE_MAP_RESOLUTION - 1);
+
+            int obstacles = LayerMask.GetMask("Obstacle");
+
+            _sharedDistMap = new Vector2[DISTANCE_MAP_RESOLUTION][];
+            for (int i = 0; i < DISTANCE_MAP_RESOLUTION; i++)
+                _sharedDistMap[i] = new Vector2[DISTANCE_MAP_RESOLUTION];
+
+            for (int i = 0; i < DISTANCE_MAP_RESOLUTION; i++)
+            {
+                for (int j = 0; j < DISTANCE_MAP_RESOLUTION; j++)
+                {
+                    Vector3 pos = _sharedDistStart + new Vector3(i * _sharedStepX, carHeight, j * _sharedStepZ);
+                    _sharedDistMap[i][j] = GetClosestObjectStatic(pos, obstacles, carHeight);
+                }
+            }
+
+            Debug.Log("Distance map built once and cached.");
+        }
+        private static Vector2 GetClosestObjectStatic(Vector3 pos, int obstacles, float carHeight)
+        {
+            float searchDist = 50f;
+            float closestDistance = 50f;
+            Vector2 closestPos = Vector2.positiveInfinity;
+            Collider[] colliders = Physics.OverlapSphere(pos, searchDist, obstacles);
+
+            foreach (Collider collider in colliders)
+            {
+                Vector3 obsPos;
+
+                if (collider is MeshCollider)
+                {
+                    Vector3 estimatedClosest = collider.bounds.center;
+                    Vector3 estClosestFlat = new Vector3(estimatedClosest.x, carHeight, estimatedClosest.z);
+                    Vector3 dir = (estClosestFlat - pos).normalized;
+
+                    if (Physics.BoxCast(pos, new Vector3(0.5f, 0.5f, 0.5f), dir, out RaycastHit hit, Quaternion.LookRotation(dir), 50f))
+                    {
+                        if (hit.collider.gameObject.name == "CarA1(Clone)" || hit.collider.gameObject.name == "startOverhead")
+                            continue;
+
+                        obsPos = hit.point;
+                    }
+                    else
+                    {
+                        obsPos = estimatedClosest;
+                    }
+                }
+                else
+                {
+                    obsPos = collider.ClosestPoint(pos);
+                }
+
+                float distance = Vector3.Distance(obsPos, pos);
+                if (distance < closestDistance)
+                {
+                    closestDistance = distance;
+                    closestPos = new Vector2(obsPos.x, obsPos.z);
+                }
+            }
+
+            return closestPos;
+        }
     }
     
     public class Node
