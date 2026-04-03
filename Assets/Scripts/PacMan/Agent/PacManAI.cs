@@ -21,7 +21,7 @@ namespace PacMan.Agent
         private CGSmoother _pathSmoother;
         private DroneControlling _droneControlling;
         private Transform _initialDroneState;
-        
+        private GameObject _currentFoodTarget;
         [Header("Debug")]
         [SerializeField] private bool useManualBlackboard = false;
         [SerializeField] private PacManBlackboard debugBlackboard = new();
@@ -34,10 +34,9 @@ namespace PacMan.Agent
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
-            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), Vector3.one);
+            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(0.1f, 1f, 0.1f), new Vector3(1f, 1f, 1f), 2);
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
-            base.Initialize(mapManager);
             _behaviorTree = new BehaviorTree();
             
             var groundPlane = GameObject.Find("GroundPlane");
@@ -103,8 +102,6 @@ namespace PacMan.Agent
                     $"VisibleEnemies: {bb.visibleEnemyCount}\n" +
                     $"Return: {bb.shouldReturnHome}";
             }
-
-            Debug.Log($"[{gameObject.name}] Mode = {_currentMode}");
             Vector2 accel = Vector2.zero;
 
             switch (_currentMode)
@@ -118,16 +115,16 @@ namespace PacMan.Agent
                     break;
 
                 case AgentMode.Defend:
-                    accel = GetDefendAcceleration();
+                    accel = GetAttackAcceleration(activeFoodPositions);
                     break;
 
                 case AgentMode.Evade:
-                    accel = GetEvadeAcceleration();
+                    accel = GetAttackAcceleration(activeFoodPositions);
                     break;
 
                 case AgentMode.Patrol:
                 default:
-                    accel = GetPatrolAcceleration();
+                    accel = GetAttackAcceleration(activeFoodPositions);
                     break;
             }
 
@@ -148,23 +145,32 @@ namespace PacMan.Agent
         {
             if (!_hasGoal)
             {
-                // Find closest food
                 var gf = new GoalFinding(agent: _agent);
                 var closestFood = gf.GetClosestEatableFood(activeFoodPositions, debug: true);
                 _goalPosition = closestFood;
-                
-                //Make the new path
-                MakePath();
-                
-                // Now pacman has a goal
+
+                bool pathOk = MakePath();
+
+                if (!pathOk)
+                {
+                    _hasGoal = false;
+                    return Vector2.zero;
+                }
+
                 _hasGoal = true;
             }
-            
-            _droneControlling.PDCalculateMove(droneTransform:_initialDroneState);
-        
+
+            if (_droneControlling == null || _initialDroneState == null)
+            {
+                _hasGoal = false;
+                return Vector2.zero;
+            }
+
+            _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
+
             var x = _droneControlling.h;
             var z = _droneControlling.v;
-            
+
             return new Vector2(x, z);
         }
 
@@ -244,26 +250,47 @@ namespace PacMan.Agent
         /// Calculates the new path based on the _goalPosition and stores it in _waypoints.
         /// Also initializes _droneControlling. 
         /// </summary>
-        private void MakePath()
+        private bool MakePath()
         {
-            // Find the path
-            Astar aStar = new();
             _initialDroneState = _agent.transform;
-            var curPos = _initialDroneState.position;
+            var curPos = _initialDroneState.localPosition;
+
+            Astar aStar = new Astar(_obstacleMap);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition);
-                
-            // Make into nodes
+
+            if (aStarPath == null || aStarPath.Count < 2)
+            {
+                Debug.LogWarning("MakePath failed: no valid A* path.");
+                _waypoints = null;
+                _droneControlling = null;
+                return false;
+            }
+
             List<Node> nodes = new();
             foreach (Vector3 pos in aStarPath)
             {
                 nodes.Add(new Node(pos.x, pos.z));
             }
-                
-            //Smooth the path
-            _waypoints = _pathSmoother.GetSmoothedPath(nodes);
-        
-            // Creates the new PD Controller for the new path
+
+            if (nodes.Count < 2)
+            {
+                Debug.LogWarning("MakePath failed: not enough nodes.");
+                _waypoints = null;
+                _droneControlling = null;
+                return false;
+            }
+
+            // _waypoints = _pathSmoother.GetSmoothedPath(nodes);
+            _waypoints = nodes;
+            if (_waypoints == null || _waypoints.Count < 2)
+            {
+                Debug.LogWarning("MakePath failed: smoother returned invalid waypoints.");
+                _droneControlling = null;
+                return false;
+            }
+
             _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState);
+            return true;
         }
         
         

@@ -11,11 +11,11 @@ namespace PacMan.Agent.PathFollowing
         // Constants
         private const float K_P_POSITION = 1f;
         private const float K_D_POSITION = 1.5f;
-        private const float K_P_VELOCITY = 10f;
+        private const float K_P_VELOCITY = 15f;
         private const float K_D_VELOCITY = 0f;
-        private const float MAX_DRONE_ACCEL = 15f;
-        private const float MAX_DRONE_SPEED = 15f;
-        
+        private const float MAX_DRONE_ACCEL = 13f;
+        private const float MAX_DRONE_SPEED = 2.08f;
+        private const float K_VELOCITY_DIRECTION = 15.0f;
         public bool HasReachedGoal = false;
         public float StoppingDistance = 0.5f; // Adjust based on the size of your car/goal
         
@@ -45,7 +45,7 @@ namespace PacMan.Agent.PathFollowing
             prevDronePos = droneState.position;  
             currDroneState = droneState;       
             bestStartIndex = 0;
-            targetDistance = 5f;
+            targetDistance = 0.5f;
             lastVelError = Vector2.zero;
             lastPosError = Vector2.zero;
             h = 0f;
@@ -59,7 +59,7 @@ namespace PacMan.Agent.PathFollowing
             
             if (CheckGoalReached()) return;
             
-            UpdateTargetDistance();
+            //UpdateTargetDistance();
     
             var targetPoint = GetTargetPoint(droneTransform.position);
             var currentPos2D = new Vector2(droneTransform.position.x, droneTransform.position.z);
@@ -69,7 +69,7 @@ namespace PacMan.Agent.PathFollowing
                 (droneTransform.position.z - prevDronePos.z) / Time.fixedDeltaTime
             );
             
-            var targetSpeed = GetMinTargetSpeed(bestStartIndex, waypoints);
+            var targetSpeed = GetTargetSpeed(closestPoint, bestStartIndex, waypoints);
             var targetDir = (targetPoint - currentPos2D).normalized;
             var desiredVelocity = targetDir * targetSpeed;
 
@@ -82,7 +82,8 @@ namespace PacMan.Agent.PathFollowing
             var velForce =  velocityError * K_P_VELOCITY + velDeriv*K_D_VELOCITY;
             var posForce = positionError * K_P_POSITION + posDeriv* K_D_POSITION;
             
-            var total = velForce + posForce;
+            var feedforward = targetDir * K_VELOCITY_DIRECTION;
+            var total = velForce + posForce + feedforward;
             
             //Debug.Log("Target Speed: " + targetSpeed);
             //Debug.Log("Current Speed" + currentVel.magnitude);
@@ -93,7 +94,7 @@ namespace PacMan.Agent.PathFollowing
             lastVelError = velocityError;
             lastPosError = positionError;
             prevDronePos = droneTransform.position;
-        }
+            }
         
         private float GetMinTargetSpeed(int index, List<Node> path)
         {
