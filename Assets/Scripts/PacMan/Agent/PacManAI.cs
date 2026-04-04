@@ -38,8 +38,12 @@ namespace PacMan.Agent
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
-            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(0.1f, 1f, 0.1f), new Vector3(1f, 1f, 1f));
-            MapEditing.InflateObstacleMap(_obstacleMap, radius: 3); //Inflate obstacles
+            var gridSize = 0.05f;
+            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize), new Vector3(1f, 1f, 1f));
+
+            var agentRadius = 0.3f; //From the capsule collider
+            var padding = Mathf.FloorToInt(agentRadius / gridSize) + 1;
+            MapEditing.InflateObstacleMap(_obstacleMap, radius: padding); //Inflate obstacles
             
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
@@ -52,6 +56,8 @@ namespace PacMan.Agent
 
         public override PacManAction Tick()
         {
+            MapEditing.VisualizeObstacleMap(transform, _obstacleMap, ref _visualizerLinked);
+            
             _agent.GetTimeRemaining();
             _agent.GetScore();
             bool isGhost = _agent.IsGhost();
