@@ -115,6 +115,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd3a6e6cdc78446d81ab62251cce6700, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  useManualBlackboard: 0
+  debugBlackboard:
+    isGhost: 0
+    isScared: 0
+    carriedFood: 0
+    visibleEnemyCount: 0
+    enemyVisible: 0
+    shouldReturnHome: 0
+  debugText: {fileID: 0}
+  allowManualOverride: 1
 --- !u!114 &6052309846596243798
 MonoBehaviour:
   m_ObjectHideFlags: 0
