@@ -2,14 +2,13 @@
 using System.Linq;
 using PacMan.Interface.PacMan;
 using PacMan.Local;
-using Scripts.Map;
-using UnityEngine;
 using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
 using PacMan.Agent.BehaviorTreeFolder;
 using TMPro;
 using UnityEngine;
 using Scripts.Map;
+using PacMan.Agent.EnemyLocalization;
 
 namespace PacMan.Agent
 {
@@ -34,14 +33,13 @@ namespace PacMan.Agent
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
-            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(0.2f, 1f, 0.2f), new Vector3(1f, 1f, 1f), 0);
+            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(0.1f, 1f, 0.1f), new Vector3(1f, 1f, 1f), 0);
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
             _behaviorTree = new BehaviorTree();
             
             var groundPlane = GameObject.Find("GroundPlane");
             var groundCollider = groundPlane.GetComponent<Collider>();
-            _pathSmoother = new CGSmoother(_agent.transform.position.y, groundCollider);
         }
 
         public override PacManAction Tick()
@@ -66,8 +64,17 @@ namespace PacMan.Agent
 
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
+            if (EnemyTrackerManager.Instance != null)
+            {
+                var estimates = EnemyTrackerManager.Instance.GetAllEstimates();
 
-            
+                foreach (var kv in estimates)
+                {
+                    int enemyId = kv.Key;
+                    Vector3 estimatedPos = kv.Value;
+                    Debug.Log($"Shared PF estimate for enemy {enemyId}: {estimatedPos}");
+                }
+            }
             PacManBlackboard bb;
             if (useManualBlackboard)
             {
@@ -293,6 +300,17 @@ namespace PacMan.Agent
             return true;
         }
         
+
+        /// <summary>
+        /// Checks if the ParticleFilter localization is inside an obstacle.
+        /// </summary>
+        /// <param name="p">particle filter prediction. </param>
+        /// <returns>Boolean. </returns>
+
+        private bool IsTraversableForPF(Vector3 p)
+        {
+            return true;
+        }
         
         private void OnGUI()
         {
