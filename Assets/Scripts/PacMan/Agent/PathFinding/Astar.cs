@@ -26,7 +26,7 @@ namespace PacMan.Agent.PathFinding
         /// <returns>The planned path. </returns>
         public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal)
         {
-            const float gridSize = 0.1f;
+            const float gridSize = 0.2f;
             
             start = FindNearestFreeCell(RoundToGrid(start, gridSize), gridSize);
             goal = RoundToGrid(goal, gridSize);
