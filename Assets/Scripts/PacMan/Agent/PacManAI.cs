@@ -34,7 +34,7 @@ namespace PacMan.Agent
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
-            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(0.1f, 1f, 0.1f), new Vector3(1f, 1f, 1f), 2);
+            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(0.2f, 1f, 0.2f), new Vector3(1f, 1f, 1f), 0);
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
             _behaviorTree = new BehaviorTree();
