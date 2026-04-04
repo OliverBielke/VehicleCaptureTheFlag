@@ -7,9 +7,11 @@ using UnityEngine;
 using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
 using PacMan.Agent.BehaviorTreeFolder;
+using PacMan.Agent.Map;
 using TMPro;
 using UnityEngine;
 using Scripts.Map;
+using System.Reflection;
 
 namespace PacMan.Agent
 {
@@ -29,12 +31,16 @@ namespace PacMan.Agent
         [SerializeField] private bool allowManualOverride = true;
         private BehaviorTree _behaviorTree;
         private AgentMode _currentMode;
+        
+        private bool _visualizerLinked = false;
 
         public override void Initialize(MapManager mapManager)
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
             _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(0.1f, 1f, 0.1f), new Vector3(1f, 1f, 1f));
+            MapEditing.InflateObstacleMap(_obstacleMap, radius: 3); //Inflate obstacles
+            
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
             _behaviorTree = new BehaviorTree();
@@ -46,6 +52,8 @@ namespace PacMan.Agent
 
         public override PacManAction Tick()
         {
+            MapEditing.VisualizeObstacleMap(transform, _obstacleMap, ref _visualizerLinked);
+            
             _agent.GetTimeRemaining();
             var stepsSinceMatchStart = _agent.GetStepsSinceMatchStart();
             var stepsRemaining = _agent.GetStepsRemaining();
