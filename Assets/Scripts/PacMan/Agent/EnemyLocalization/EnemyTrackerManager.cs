@@ -392,7 +392,7 @@ namespace PacMan.Agent.EnemyLocalization
             if (IsTraversable(point))
                 return point;
 
-            float maxRadius = 6f;
+            float maxRadius = 2f;
             float radiusStep = 0.25f;
             int angleSteps = 32;
 
