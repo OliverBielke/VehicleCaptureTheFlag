@@ -2,13 +2,14 @@
 using System.Linq;
 using PacMan.Interface.PacMan;
 using PacMan.Local;
-using Scripts.Map;
-using UnityEngine;
 using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
 using PacMan.Agent.BehaviorTreeFolder;
 using PacMan.Agent.Map;
 using TMPro;
+using UnityEngine;
+using Scripts.Map;
+using PacMan.Agent.EnemyLocalization;
 using System.Reflection;
 
 namespace PacMan.Agent
@@ -75,8 +76,16 @@ namespace PacMan.Agent
 
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
+            if (EnemyTrackerManager.Instance != null)
+            {
+                var estimates = EnemyTrackerManager.Instance.GetAllEstimates();
 
-            
+                foreach (var kv in estimates)
+                {
+                    int enemyId = kv.Key;
+                    Vector3 estimatedPos = kv.Value;
+                }
+            }
             PacManBlackboard bb;
             if (useManualBlackboard)
             {
@@ -302,6 +311,17 @@ namespace PacMan.Agent
             return true;
         }
         
+
+        /// <summary>
+        /// Checks if the ParticleFilter localization is inside an obstacle.
+        /// </summary>
+        /// <param name="p">particle filter prediction. </param>
+        /// <returns>Boolean. </returns>
+
+        private bool IsTraversableForPF(Vector3 p)
+        {
+            return true;
+        }
         
         private void OnGUI()
         {

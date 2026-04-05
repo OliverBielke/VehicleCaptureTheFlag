@@ -39,13 +39,7 @@ namespace PacMan.Agent.PathFinding
             
             const int maxIterations = 50000;
             var iter = 0;
-            Debug.Log($"A* start = {start}, trav = {_obstacleMap.GetLocalPointTraversibility(start)}");
-            Debug.Log($"A* goal  = {goal}, trav = {_obstacleMap.GetLocalPointTraversibility(goal)}");
 
-            foreach (Vector3 n in GetNeighbors(start, gridSize))
-            {
-                Debug.Log($"neighbor {n} -> {_obstacleMap.GetLocalPointTraversibility(n)}");
-            }
             while (openSet.Count > 0 && iter < maxIterations)
             {
                 iter++;
