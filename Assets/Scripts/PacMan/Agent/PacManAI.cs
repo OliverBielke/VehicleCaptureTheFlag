@@ -9,8 +9,6 @@ using PacMan.Agent.PathFollowing;
 using PacMan.Agent.BehaviorTreeFolder;
 using PacMan.Agent.Map;
 using TMPro;
-using UnityEngine;
-using Scripts.Map;
 using System.Reflection;
 
 namespace PacMan.Agent
@@ -24,6 +22,7 @@ namespace PacMan.Agent
         private DroneControlling _droneControlling;
         private Transform _initialDroneState;
         private GameObject _currentFoodTarget;
+        [SerializeField] private bool drawObstacleMap = false;
         [Header("Debug")]
         [SerializeField] private bool useManualBlackboard = false;
         [SerializeField] private PacManBlackboard debugBlackboard = new();
@@ -38,12 +37,12 @@ namespace PacMan.Agent
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
-            var gridSize = 0.05f;
-            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize), new Vector3(1f, 1f, 1f));
+            var gridSize = 0.2f;
+            _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize), new Vector3(1f, 1f, 1f));
 
-            var agentRadius = 0.3f; //From the capsule collider
-            var padding = Mathf.FloorToInt(agentRadius / gridSize) + 1;
-            MapEditing.InflateObstacleMap(_obstacleMap, radius: padding); //Inflate obstacles
+            // var agentRadius = 0.0f; //From the capsule collider
+            // var padding = Mathf.FloorToInt(agentRadius / gridSize) + 1;
+            // MapEditing.InflateObstacleMap(_obstacleMap, radius: padding); //Inflate obstacles
             
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
@@ -51,12 +50,10 @@ namespace PacMan.Agent
             
             var groundPlane = GameObject.Find("GroundPlane");
             var groundCollider = groundPlane.GetComponent<Collider>();
-            _pathSmoother = new CGSmoother(_agent.transform.position.y, groundCollider);
         }
 
         public override PacManAction Tick()
         {
-            MapEditing.VisualizeObstacleMap(transform, _obstacleMap, ref _visualizerLinked);
             
             _agent.GetTimeRemaining();
             _agent.GetScore();
@@ -333,6 +330,7 @@ namespace PacMan.Agent
         
         private void OnDrawGizmos()
         {
+            MapEditing.DrawObstacleMap(transform, _obstacleMap, drawObstacleMap);
             if (_waypoints != null && _waypoints.Count > 0)
             {
                 Gizmos.color = Color.cyan;

@@ -10,14 +10,14 @@ namespace PacMan.Agent
     public class PacManAI : MonoBehaviour
     {
         protected PacManAgentManager _agent;
-        protected ObstacleMap _obstacleMap;
+        protected ObstacleMapV2 _obstacleMap;
         protected MapManager _mapManager;
 
         public virtual void Initialize(MapManager mapManager) // Ticked when all agents spawned by the network and seen properly by the client. Not the same as Start or Awake in this assignment.
         {
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
-            _obstacleMap = ObstacleMap.Initialize(_mapManager, new List<GameObject>(), Vector3.one);
+            _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), Vector3.one);
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
         }
 

@@ -13,13 +13,13 @@ namespace PacMan.Agent.Map
         /// </summary>
         /// <param name="map">The obstacle map. </param>
         /// <param name="radius">Radius of inflation in #cells. </param>
-        public static void InflateObstacleMap(ObstacleMap map, int radius)
+        public static void InflateObstacleMap(ObstacleMapV2 map, int radius)
         {
             if (map == null || radius <= 0) return;
 
             // Find all currently blocked cells
             var originalBlocked = map.traversabilityPerCell
-                .Where(kvp => kvp.Value == ObstacleMap.Traversability.Blocked)
+                .Where(kvp => kvp.Value == ObstacleMapV2.Traversability.Blocked)
                 .Select(kvp => kvp.Key)
                 .ToList();
 
@@ -48,35 +48,39 @@ namespace PacMan.Agent.Map
             // Apply the inflated blocked cells back to the map
             foreach (var cell in toBlock)
             {
-                map.traversabilityPerCell[cell] = ObstacleMap.Traversability.Blocked;
+                map.traversabilityPerCell[cell] = ObstacleMapV2.Traversability.Blocked;
             }
         }
         
         
-        public static void VisualizeObstacleMap(Transform transform, ObstacleMap obstacleMap, ref bool visualizerLinked)
+        public static void DrawObstacleMap(
+            Transform transform,
+            ObstacleMapV2 obstacleMap,
+            bool draw)
         {
-            // 1. On the very first Tick, forcefully inject our inflated map into the visualizer
-            if (!visualizerLinked)
+            if (!draw || obstacleMap == null || obstacleMap.traversabilityPerCell == null)
+                return;
+
+            foreach (var posEntity in obstacleMap.traversabilityPerCell)
             {
-                Transform gameManager = transform.parent;
-                if (gameManager != null)
-                {
-                    ObstacleMapVisualizer visualizer = gameManager.GetComponentInChildren<ObstacleMapVisualizer>();
-                    if (visualizer != null)
-                    {
-                        // Use C# Reflection to find the private "m_ObstacleMap" field...
-                        FieldInfo privateMapField = typeof(ObstacleMapVisualizer).GetField("m_ObstacleMap", BindingFlags.NonPublic | BindingFlags.Instance);
-                
-                        if (privateMapField != null)
-                        {
-                            // ...and forcefully set it to the agent's already-inflated map!
-                            privateMapField.SetValue(visualizer, obstacleMap);
-                        }
-                    }
-                }
-                visualizerLinked = true; // Make sure we only do this once
+                var position = new Vector3Int(posEntity.Key.x, 0, posEntity.Key.y);
+
+                var cellToWorld = obstacleMap.CellToWorld(position) + obstacleMap.trueScale / 2f;
+                cellToWorld.y = transform.position.y + 0.25f;
+
+                var gizmoSize = new Vector3(
+                    obstacleMap.trueScale.x * 0.95f,
+                    0.005f,
+                    obstacleMap.trueScale.z * 0.95f
+                );
+
+                if (posEntity.Value == ObstacleMapV2.Traversability.Blocked)
+                    Gizmos.color = Color.red;
+                else
+                    Gizmos.color = Color.green;
+
+                Gizmos.DrawCube(cellToWorld, gizmoSize);
             }
-            
         }
     }
 }
