@@ -9,11 +9,11 @@ namespace PacMan.Agent.PathFinding
 {
     public class Astar
     {
-        private readonly ObstacleMap _obstacleMap;
+        private readonly ObstacleMapV2 _obstacleMap;
         private readonly List<Vector3> _astarExploredNodes = new();
         
         
-        public Astar(ObstacleMap obstacleMap)
+        public Astar(ObstacleMapV2 obstacleMap)
         {
             _obstacleMap = obstacleMap;
         }
@@ -227,7 +227,7 @@ namespace PacMan.Agent.PathFinding
             if (_obstacleMap == null)
                 return false;
 
-            return _obstacleMap.GetLocalPointTraversibility(position) == ObstacleMap.Traversability.Free;
+            return _obstacleMap.GetLocalPointTraversibility(position) == ObstacleMapV2.Traversability.Free;
         }
 
         /// <summary>

@@ -115,6 +115,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd3a6e6cdc78446d81ab62251cce6700, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  drawObstacleMap: 0
   useManualBlackboard: 0
   debugBlackboard:
     isGhost: 0
