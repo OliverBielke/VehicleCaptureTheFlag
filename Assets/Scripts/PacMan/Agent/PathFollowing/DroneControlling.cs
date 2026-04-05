@@ -13,8 +13,8 @@ namespace PacMan.Agent.PathFollowing
         private const float K_D_POSITION = 1.5f;
         private const float K_P_VELOCITY = 15f;
         private const float K_D_VELOCITY = 0f;
-        private const float MAX_DRONE_ACCEL = 13f;
-        private const float MAX_DRONE_SPEED = 2.08f;
+        private const float MAX_DRONE_ACCEL = 15f;
+        private const float MAX_DRONE_SPEED = 15f;
         private const float K_VELOCITY_DIRECTION = 15.0f;
         public bool HasReachedGoal = false;
         public float StoppingDistance = 0.5f; // Adjust based on the size of your car/goal

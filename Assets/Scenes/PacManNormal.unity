@@ -48009,7 +48009,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   mapManager: {fileID: 1490924509}
-  drawMapGizmo: 1
+  drawMapGizmo: 0
   margin: {x: 1, y: 1, z: 1}
   cellScale: {x: 0.2, y: 1, z: 0.1}
 --- !u!1 &1493644963
