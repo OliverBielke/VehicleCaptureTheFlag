@@ -171,7 +171,7 @@ namespace PacMan.Agent.EnemyLocalization
             }
         }
 
-        public float RecoveryDistanceThreshold = 6f;
+        public float RecoveryDistanceThreshold = 8.5f;
         public float RecoveryFraction = 0.5f;
         public float ObservationRespawnNoise = 3.0f;
 
