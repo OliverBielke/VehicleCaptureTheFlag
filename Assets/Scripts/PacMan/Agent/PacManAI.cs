@@ -74,6 +74,10 @@ namespace PacMan.Agent
             var teamAgentManagers = _agent.GetTeamAgents(); //Agents in team, including this agent
             var friendlyAgentManagers = _agent.GetFriendlyAgents(); //Agents in team, except this agent
 
+            // Since the RigidBody is updated server side and the client only syncs position, rigidbody.Velocity does not report a velocity
+            var velocity = _agent.GetVelocity(); // Use the manager method to get the true velocity from the server
+            // friendlyAgentManager.GetVelocity(); // Given the damping, max velocity magnitude is around 2.34
+            
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
             if (EnemyTrackerManager.Instance != null)
@@ -133,11 +137,11 @@ namespace PacMan.Agent
                     break;
 
                 case AgentMode.Defend:
-                    accel = GetAttackAcceleration(activeFoodPositions);
+                    accel = GetDefendAcceleration();
                     break;
 
                 case AgentMode.Evade:
-                    accel = GetAttackAcceleration(activeFoodPositions);
+                    accel = GetEvadeAcceleration(velocity);
                     break;
 
                 case AgentMode.Patrol:
@@ -219,15 +223,33 @@ namespace PacMan.Agent
             return Vector2.zero;
         }
 
-        private Vector2 GetEvadeAcceleration()
+        private Vector2 GetEvadeAcceleration(Vector3 velocity)
         {
             var visibleEnemies = _agent.GetVisibleEnemyAgents();
             if (visibleEnemies != null && visibleEnemies.Count > 0)
             {
+                
                 Vector3 myPos = transform.localPosition;
                 Vector3 enemyPos = visibleEnemies[0].transform.localPosition;
                 Vector3 dir = (myPos - enemyPos).normalized;
-                return new Vector2(dir.x, dir.z);
+                var intendedH = dir.x;
+                var intendedV = dir.z;
+                
+                var vo = new VO(transform, maxAcceleration:15f, true);
+
+                float x;
+                float z;
+
+                // Select the GameObject from each manager and convert the result to an array
+                var otherDrones = visibleEnemies.Select(agent => agent.gameObject).ToArray();
+                var obstacles = Physics.OverlapSphere(transform.position, 20f, LayerMask.GetMask("Obstacle"));
+
+                
+                (x, z) = vo.GetSafeAcceleration(myTransform: transform, currentVelocity: velocity, 
+                    intendedH:intendedH, intendedV:intendedV, otherDrones:otherDrones, 
+                    staticObstacles:obstacles);
+                
+                return new Vector2(x, z);
             }
 
             return GetReturnHomeAcceleration();

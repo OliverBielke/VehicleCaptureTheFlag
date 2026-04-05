@@ -17,35 +17,39 @@ namespace PacMan.Agent.PathFollowing
     
     public class VO
     {
-        // --- 1. Agent Capabilities ---
+        // --- Agent Capabilities ---
         private readonly float _maxAcceleration;
         private readonly float _vehicleRadius;
         
-        // --- 2. Safety Parameters ---
-        private const float TimeHorizon = 2.0f;           // How far ahead to predict (seconds)
-        private const float PedestrianRadius = 1.0f;      // Approximate size of a pedestrian
+        // --- Safety Parameters ---
+        private const float TimeHorizon = 8.0f;           // Dynamic obstacles
+        private const float WallTimeHorizon = 0.2f;       // Static obstacles (CBF-style)
         private const int AccelSamples = 100;               // How many points to check on our acceleration grid
-        private const float VehicleRadiusPadding =  0.5f;
-        private const float StaticObstacleRadiusPadding = 0.5f;
+        private const float AgentRadiusPadding =  0.05f;
+        private const float OpponentRadiusPadding = 0.5f;
+        private const float StaticObstacleRadiusPadding = 0.05f;
         
-        // Add this line:
-        private const float PedestrianTurnAnticipationTime = 1.0f; // How many seconds before a turn to assume v=0
+        // --- Debugging ---
+        private readonly bool _debug;
         
-        public VO(Transform vehicleTransform, float maxAcceleration)
+        public VO(Transform vehicleTransform, float maxAcceleration, bool debug)
         {
             _maxAcceleration = maxAcceleration;
-            _vehicleRadius = vehicleTransform.GetComponent<Collider>().bounds.extents.z + VehicleRadiusPadding; 
+            _vehicleRadius = vehicleTransform.GetComponent<Collider>().bounds.extents.z + AgentRadiusPadding; 
+            _debug = debug;
         }
 
         public (float, float) GetSafeAcceleration(Transform myTransform, Vector3 currentVelocity, 
-            float intendedH, float intendedV, GameObject[] otherDrones, GameObject[] pedestrians, 
-            Collider[] staticObstacles
+            float intendedH, float intendedV, GameObject[] otherDrones, Collider[] staticObstacles
             )
         {
             var currentVelocity2 = new Vector2(currentVelocity.x, currentVelocity.z);
-            
-            // Visualize Agent's Current State & Intent
-            VisualizeAgentAndObstacles(myTransform, currentVelocity2, intendedH, intendedV, pedestrians);
+
+            if (_debug)
+            {
+                // Visualize Agent's Current State & Intent
+                VisualizeAgentAndObstacles(myTransform, currentVelocity2, intendedH, intendedV, otherDrones);
+            }
             
             // Clamp intent to the physical capabilities of this specific drone model
             var intendedAccel2D = GetRealAcceleration(intendedH, intendedV);
@@ -85,19 +89,24 @@ namespace PacMan.Agent.PathFollowing
         
                 wallPlanes.Add((normal2D, effDist, new Vector2(closest3D.x, closest3D.z)));
                 
+                
+                if (!_debug)
+                {
+                    continue;
+                }
+                
                 // --- NEW: Extended Wall Visualization ---
                 // 1. Find the 3D point where the padded wall boundary sits
                 var paddedWallPoint3D = closest3D + new Vector3(normal2D.x, 0, normal2D.y) * StaticObstacleRadiusPadding;
-                
+                    
                 // 2. Calculate the tangent (perpendicular to the normal) to draw the flat surface of the plane
                 var wallTangent = new Vector3(-normal2D.y, 0, normal2D.x);
-                
+                    
                 // 3. Draw an orange line representing the padded boundary (extends 2 units in both directions)
                 Debug.DrawLine(paddedWallPoint3D - wallTangent * 2f, paddedWallPoint3D + wallTangent * 2f, new Color(1f, 0.5f, 0f)); 
-                
+                    
                 // 4. (Optional) Draw a short grey ray showing the normal direction pointing away from the wall
                 Debug.DrawRay(paddedWallPoint3D, new Vector3(normal2D.x, 0, normal2D.y), Color.grey);
-                // ----------------------------------------
             }
             
             var bestAccel = Vector2.zero;
@@ -146,12 +155,16 @@ namespace PacMan.Agent.PathFollowing
                                 wallColTime = plane.Distance / velTowardsWall;
                             }
                 
-                            // If hitting the wall happens sooner than hitting a dynamic obstacle
-                            if (colTime > TimeHorizon || wallColTime < colTime)
+                            // NEW: CBF-style check. Only treat the wall as a threat if impact is imminent.
+                            if (wallColTime <= WallTimeHorizon)
                             {
-                                colTime = wallColTime;
-                                obsIndex = -2; // Special index to denote a static wall threat
-                                currentCandidateWallPos = plane.ClosestPoint;
+                                // If the wall collision is happening sooner than a dynamic collision
+                                if (colTime > TimeHorizon || wallColTime < colTime)
+                                {
+                                    colTime = wallColTime;
+                                    obsIndex = -2; // Special index to denote a static wall threat
+                                    currentCandidateWallPos = plane.ClosestPoint;
+                                }
                             }
                         }
                     }
@@ -160,7 +173,7 @@ namespace PacMan.Agent.PathFollowing
                 if (colTime > TimeHorizon)
                 {
                     // If perfectly safe, optionally draw line to the furthest tracked threat (if any exist)
-                    if (obsIndex != -1 && obsIndex != -2)
+                    if (_debug && obsIndex != -1 && obsIndex != -2)
                     {
                         var threat = obstacleList[obsIndex];
                         var threatPos3D = new Vector3(threat.Position.x, myTransform.position.y, threat.Position.y);
@@ -188,45 +201,32 @@ namespace PacMan.Agent.PathFollowing
             }
             
             // Draw the debug line for the best fallback candidate we are forced to use
-            if (mostThreateningObstacleIndex != -1)
+            if (_debug)
             {
-                if (mostThreateningObstacleIndex == -2)
+                if (mostThreateningObstacleIndex != -1)
                 {
-                    // Safe drawing for static walls
-                    Debug.DrawLine(myTransform.position,
-                        new Vector3(mostThreateningWallPos.x, myTransform.position.y, mostThreateningWallPos.y),
-                        Color.red);
+                    if (mostThreateningObstacleIndex == -2)
+                    {
+                        // Safe drawing for static walls
+                        Debug.DrawLine(myTransform.position,
+                            new Vector3(mostThreateningWallPos.x, myTransform.position.y, mostThreateningWallPos.y),
+                            Color.red);
+                    }
+                    else
+                    {
+                        // Safe drawing for dynamic agents
+                        var threatPos = obstacleList[mostThreateningObstacleIndex].Position;
+                        Debug.DrawLine(myTransform.position, new Vector3(threatPos.x, myTransform.position.y, threatPos.y),
+                            Color.red);
+                    }
                 }
-                else
-                {
-                    // Safe drawing for dynamic agents
-                    var threatPos = obstacleList[mostThreateningObstacleIndex].Position;
-                    Debug.DrawLine(myTransform.position, new Vector3(threatPos.x, myTransform.position.y, threatPos.y),
-                        Color.red);
-                }
+                // Visualize the finalized, chosen acceleration in magenta
+                Debug.DrawRay(myTransform.position + currentVelocity, new Vector3(bestAccel.x, 0, bestAccel.y), Color.magenta);
             }
-
-            // Visualize the finalized, chosen acceleration in magenta
-            Debug.DrawRay(myTransform.position + currentVelocity, new Vector3(bestAccel.x, 0, bestAccel.y), Color.magenta);
             
             (h, v) = GetAccelerationOutput(bestAccel);
             
             return (h, v);
-        }
-
-
-        private VehicleState ConvertStaticObstacleToState(Collider obstacle, Transform myTransform)
-        {
-            var obsPos3D = obstacle.ClosestPoint(myTransform.position);
-            var obsPos = new Vector2(obsPos3D.x, obsPos3D.z);
-            
-            return new VehicleState
-            {
-                Position = obsPos,
-                Velocity = Vector2.zero, 
-                Forward = Vector2.zero, 
-                Radius = 0f + StaticObstacleRadiusPadding
-            };
         }
         
         
@@ -241,7 +241,7 @@ namespace PacMan.Agent.PathFollowing
                 Position = dronePos,
                 Velocity = new Vector2(droneVel.x, droneVel.z), 
                 Forward = new Vector2(droneVel.x, droneVel.z).normalized, 
-                Radius = _vehicleRadius
+                Radius = _vehicleRadius + OpponentRadiusPadding - AgentRadiusPadding
             };
         }
         
@@ -411,7 +411,7 @@ namespace PacMan.Agent.PathFollowing
         
         
         private void VisualizeAgentAndObstacles(Transform myTransform, Vector3 currentVelocity, 
-            float intendedH, float intendedV, GameObject[] pedestrians)
+            float intendedH, float intendedV, GameObject[] otherDrones)
         {
             // Green line: Current Velocity
             Debug.DrawRay(myTransform.position, currentVelocity, Color.green);
@@ -421,7 +421,14 @@ namespace PacMan.Agent.PathFollowing
             Debug.DrawRay(myTransform.position + currentVelocity, intendedAccelVector, Color.blue);
             
             // Draw this vehicle radius
-            DrawDebugCircle(myTransform.position, _vehicleRadius, Color.cyan); 
+            DrawDebugCircle(myTransform.position, _vehicleRadius, Color.cyan);
+
+            // Draw opponents
+            foreach (var otherDrone in otherDrones)
+            {
+                DrawDebugCircle(otherDrone.transform.position, 
+                    _vehicleRadius + OpponentRadiusPadding - AgentRadiusPadding, Color.red);
+            }
         }
         
         
