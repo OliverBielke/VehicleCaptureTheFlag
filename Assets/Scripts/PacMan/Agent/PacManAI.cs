@@ -235,7 +235,7 @@ namespace PacMan.Agent
                 var intendedH = dir.x;
                 var intendedV = dir.z;
                 
-                var vo = new VO(transform, maxAcceleration:15f, true);
+                var vo = new VO(transform, maxAcceleration:15f, false);
 
                 float x;
                 float z;
