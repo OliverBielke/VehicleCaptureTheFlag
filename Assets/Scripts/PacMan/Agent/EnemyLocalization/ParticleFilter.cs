@@ -9,11 +9,13 @@ namespace PacMan.Agent.EnemyLocalization
     public class PFParticle
     {
         public Vector3 Position;
+        public Vector3 Velocity;
         public float Weight;
 
-        public PFParticle(Vector3 position, float weight)
+        public PFParticle(Vector3 position, Vector3 velocity, float weight)
         {
             Position = position;
+            Velocity = velocity;
             Weight = weight;
         }
     }
@@ -27,7 +29,10 @@ namespace PacMan.Agent.EnemyLocalization
         public float ResampleJitter = 0.1f;
         public float MinWeight = 1e-6f;
         public float ExactObservationNoise = 0.05f;
-
+        public float VelocityNoiseStd = 0.2f;
+        public float MaxSpeed = 2.0f;
+        public float InitialSpeedStd = 0.5f;
+        public float VelocityPersistence = 0.95f; // 1 = perfectly straight, lower = more turning
         private readonly List<PFParticle> _particles = new List<PFParticle>();
         private readonly System.Random _rng = new System.Random();
 
@@ -37,7 +42,7 @@ namespace PacMan.Agent.EnemyLocalization
         public bool IsInitialized => _particles.Count > 0;
         public IReadOnlyList<PFParticle> Particles => _particles;
 
-        public void Initialize(Bounds worldBounds, Func<Vector3, bool> isTraversable, Vector3? initialGuess = null)
+        public void Initialize(Bounds worldBounds, Func<Vector3, bool> isTraversable, Vector3? initialGuess = null, Vector3? initialVelocity = null)
         {
             _worldBounds = worldBounds;
             _isTraversable = isTraversable;
@@ -60,7 +65,21 @@ namespace PacMan.Agent.EnemyLocalization
                     p = SampleRandomValidPoint();
                 }
 
-                _particles.Add(new PFParticle(p, 1f / ParticleCount));
+                Vector3 v;
+                if (initialVelocity.HasValue)
+                {
+                    v = initialVelocity.Value + SampleGaussianVector(InitialSpeedStd);
+                }
+                else
+                {
+                    v = SampleGaussianVector(InitialSpeedStd);
+                }
+
+                v.y = 0f;
+                if (v.magnitude > MaxSpeed)
+                    v = v.normalized * MaxSpeed;
+
+                _particles.Add(new PFParticle(p, v, 1f / ParticleCount));
             }
         }
 
@@ -70,21 +89,68 @@ namespace PacMan.Agent.EnemyLocalization
 
             for (int i = 0; i < _particles.Count; i++)
             {
-                Vector3 oldPos = _particles[i].Position;
+                PFParticle particle = _particles[i];
 
-                Vector3 randomDir = UnityEngine.Random.insideUnitSphere;
-                randomDir.y = 0f;
+                Vector3 oldPos = particle.Position;
+                Vector3 oldVel = particle.Velocity;
 
-                if (randomDir.sqrMagnitude > 1e-6f)
-                    randomDir = randomDir.normalized * UnityEngine.Random.Range(0f, MaxStepDistance);
+                Vector3 velNoise = SampleGaussianVector(VelocityNoiseStd);
+                velNoise.y = 0f;
 
-                Vector3 newPos = oldPos + drift * dt + randomDir + SampleGaussianVector(MotionNoiseStd);
-                newPos = ClampToBounds(newPos);
+                Vector3 newVel = oldVel * VelocityPersistence + velNoise + drift;
+                newVel.y = 0f;
 
-                if (IsValid(newPos))
-                    _particles[i].Position = newPos;
+                if (newVel.magnitude > MaxSpeed)
+                    newVel = newVel.normalized * MaxSpeed;
+
+                Vector3 delta = newVel * dt;
+
+                Vector3 fullMove = ClampToBounds(oldPos + delta);
+                if (IsValid(fullMove))
+                {
+                    particle.Position = fullMove;
+                    particle.Velocity = newVel;
+                    continue;
+                }
+
+                // Try sliding along X only
+                Vector3 xOnly = ClampToBounds(oldPos + new Vector3(delta.x, 0f, 0f));
+                bool xValid = IsValid(xOnly);
+
+                // Try sliding along Z only
+                Vector3 zOnly = ClampToBounds(oldPos + new Vector3(0f, 0f, delta.z));
+                bool zValid = IsValid(zOnly);
+
+                if (xValid && zValid)
+                {
+                    // Prefer the axis with the larger movement component
+                    if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.z))
+                    {
+                        particle.Position = xOnly;
+                        particle.Velocity = new Vector3(newVel.x, 0f, 0f);
+                    }
+                    else
+                    {
+                        particle.Position = zOnly;
+                        particle.Velocity = new Vector3(0f, 0f, newVel.z);
+                    }
+                }
+                else if (xValid)
+                {
+                    particle.Position = xOnly;
+                    particle.Velocity = new Vector3(newVel.x, 0f, 0f);
+                }
+                else if (zValid)
+                {
+                    particle.Position = zOnly;
+                    particle.Velocity = new Vector3(0f, 0f, newVel.z);
+                }
                 else
-                    _particles[i].Position = oldPos;
+                {
+                    // If fully blocked, stay put but do not kill all momentum completely
+                    particle.Position = oldPos;
+                    particle.Velocity = oldVel * 0.25f;
+                }
             }
         }
 
@@ -105,28 +171,60 @@ namespace PacMan.Agent.EnemyLocalization
             }
         }
 
+        public float RecoveryDistanceThreshold = 6f;
+        public float RecoveryFraction = 0.5f;
+        public float ObservationRespawnNoise = 3.0f;
+
         public void UpdateWithNoisyObservation(Vector3 observedCenter, float readingDispersion)
         {
             if (!IsInitialized) return;
 
-            float halfWidth = readingDispersion * 0.5f;
             float totalWeight = 0f;
+            float sigma = Mathf.Max(0.1f, readingDispersion);
 
             for (int i = 0; i < _particles.Count; i++)
             {
                 Vector3 p = _particles[i].Position;
 
-                bool inside =
-                    Mathf.Abs(p.x - observedCenter.x) <= halfWidth &&
-                    Mathf.Abs(p.z - observedCenter.z) <= halfWidth;
+                float dx = p.x - observedCenter.x;
+                float dz = p.z - observedCenter.z;
+                float distSq = dx * dx + dz * dz;
 
-                float w = inside ? 1f : MinWeight;
+                float w = Mathf.Exp(-distSq / (2f * sigma * sigma)) + MinWeight;
                 _particles[i].Weight = w;
                 totalWeight += w;
             }
 
             NormalizeWeights(totalWeight);
             Resample();
+
+            Vector3 estimate = GetEstimatedPosition();
+            float distToObservation = Vector3.Distance(
+                new Vector3(estimate.x, 0f, estimate.z),
+                new Vector3(observedCenter.x, 0f, observedCenter.z)
+            );
+
+            if (distToObservation > RecoveryDistanceThreshold)
+            {
+                int countToRespawn = Mathf.RoundToInt(_particles.Count * RecoveryFraction);
+
+                for (int i = 0; i < countToRespawn; i++)
+                {
+                    int idx = _rng.Next(_particles.Count);
+
+                    Vector3 p = observedCenter + SampleGaussianVector(ObservationRespawnNoise);
+                    p = ClampToBounds(p);
+
+                    if (!IsValid(p))
+                        p = observedCenter;
+
+                    _particles[idx].Position = p;
+                    _particles[idx].Velocity = SampleGaussianVector(InitialSpeedStd);
+                    _particles[idx].Weight = 1f / ParticleCount;
+                }
+
+                NormalizeWeights(_particles.Sum(pp => pp.Weight));
+            }
         }
 
         public Vector3 GetEstimatedPosition()
@@ -196,7 +294,8 @@ namespace PacMan.Agent.EnemyLocalization
                 if (!IsValid(p))
                     p = _particles[i].Position;
 
-                newParticles.Add(new PFParticle(p, 1f / ParticleCount));
+                Vector3 v = _particles[i].Velocity;
+                newParticles.Add(new PFParticle(p, v, 1f / ParticleCount));
             }
 
             _particles.Clear();

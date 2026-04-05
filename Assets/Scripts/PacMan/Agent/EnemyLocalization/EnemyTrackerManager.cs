@@ -19,6 +19,12 @@ namespace PacMan.Agent.EnemyLocalization
         [SerializeField] private float minWeight = 1e-6f;
         [SerializeField] private float exactObservationNoise = 0.05f;
 
+        // New:
+        [SerializeField] private float velocityNoiseStd = 0.2f;
+        [SerializeField] private float maxParticleSpeed = 2.1f;
+        [SerializeField] private float initialSpeedStd = 0.5f;
+        [SerializeField] [Range(0f, 1f)] private float velocityPersistence = 0.95f;
+
         [Header("Motion Trend Settings")]
         [SerializeField] private float maxReasonableSpeed = 2.1f;
         [SerializeField] [Range(0f, 1f)] private float velocitySmoothingOldWeight = 0.7f;
@@ -39,7 +45,7 @@ namespace PacMan.Agent.EnemyLocalization
         [SerializeField] private bool logTrackingSource = false;
         [SerializeField] private MapManager mapManager;
 
-        private ObstacleMap _obstacleMap;
+        private ObstacleMapV2 _obstacleMap;
         private readonly Dictionary<int, ParticleFilter> _enemyFilters = new Dictionary<int, ParticleFilter>();
         private readonly Dictionary<int, EnemyTrackState> _trackStates = new Dictionary<int, EnemyTrackState>();
 
@@ -106,10 +112,10 @@ namespace PacMan.Agent.EnemyLocalization
 
             if (mapManager != null)
             {
-                _obstacleMap = ObstacleMap.Initialize(
+                _obstacleMap = ObstacleMapV2.Initialize(
                     mapManager,
                     new List<GameObject>(),
-                    new Vector3(0.1f, 1f, 0.1f),
+                    new Vector3(0.2f, 1f, 0.2f),
                     new Vector3(1f, 1f, 1f),
                     0
                 );
@@ -252,9 +258,11 @@ namespace PacMan.Agent.EnemyLocalization
                         continue;
 
                     int enemyId = obs.ServerIndex;
-                    ParticleFilter pf = GetOrCreateFilter(enemyId, obs.Position);
-                    UpdateTrackStateFromObservation(enemyId, obs.Position, now);
-                    pf.UpdateWithNoisyObservation(obs.Position, obs.ReadingDispersion);
+                    Vector3 correctedObsPos = CorrectNoisyObservationPosition(obs.Position);
+
+                    ParticleFilter pf = GetOrCreateFilter(enemyId, correctedObsPos);
+                    UpdateTrackStateFromObservation(enemyId, correctedObsPos, now);
+                    pf.UpdateWithNoisyObservation(correctedObsPos, obs.ReadingDispersion);
                 }
             }
             // foreach (var kv in _enemyFilters)
@@ -321,10 +329,21 @@ namespace PacMan.Agent.EnemyLocalization
                 MaxStepDistance = maxStepDistance,
                 ResampleJitter = resampleJitter,
                 MinWeight = minWeight,
-                ExactObservationNoise = exactObservationNoise
+                ExactObservationNoise = exactObservationNoise,
+
+                VelocityNoiseStd = velocityNoiseStd,
+                MaxSpeed = maxParticleSpeed,
+                InitialSpeedStd = initialSpeedStd,
+                VelocityPersistence = velocityPersistence
             };
 
-            pf.Initialize(_pfBounds, _isTraversable, initialGuess);
+            Vector3 initialVelocity = Vector3.zero;
+            if (_trackStates.TryGetValue(enemyId, out var state) && state.HasObservationHistory)
+            {
+                initialVelocity = state.EstimatedVelocity;
+            }
+
+            pf.Initialize(_pfBounds, _isTraversable, initialGuess, initialVelocity);
             _enemyFilters[enemyId] = pf;
             return pf;
         }
@@ -366,6 +385,72 @@ namespace PacMan.Agent.EnemyLocalization
 
             return false;
         }
+        private Vector3 SnapToNearestFreeSpace(Vector3 point)
+        {
+            point = ClampPointToTrackerBounds(point);
+
+            if (IsTraversable(point))
+                return point;
+
+            float maxRadius = 6f;
+            float radiusStep = 0.25f;
+            int angleSteps = 32;
+
+            Vector3 bestPoint = point;
+            float bestDistSq = float.MaxValue;
+            bool found = false;
+
+            for (float r = radiusStep; r <= maxRadius; r += radiusStep)
+            {
+                for (int a = 0; a < angleSteps; a++)
+                {
+                    float angle = (2f * Mathf.PI * a) / angleSteps;
+
+                    Vector3 candidate = new Vector3(
+                        point.x + Mathf.Cos(angle) * r,
+                        0f,
+                        point.z + Mathf.Sin(angle) * r
+                    );
+
+                    candidate = ClampPointToTrackerBounds(candidate);
+
+                    if (!IsTraversable(candidate))
+                        continue;
+
+                    float distSq = (candidate - point).sqrMagnitude;
+                    if (distSq < bestDistSq)
+                    {
+                        bestDistSq = distSq;
+                        bestPoint = candidate;
+                        found = true;
+                    }
+                }
+
+                if (found)
+                    return bestPoint;
+            }
+
+            return point;
+        }
+
+        private Vector3 ClampPointToTrackerBounds(Vector3 p)
+        {
+            return new Vector3(
+                Mathf.Clamp(p.x, _pfBounds.min.x, _pfBounds.max.x),
+                0f,
+                Mathf.Clamp(p.z, _pfBounds.min.z, _pfBounds.max.z)
+            );
+        }
+
+        private Vector3 CorrectNoisyObservationPosition(Vector3 rawObservation)
+        {
+            Vector3 clamped = ClampPointToTrackerBounds(rawObservation);
+
+            if (_obstacleMap == null)
+                return clamped;
+
+            return SnapToNearestFreeSpace(clamped);
+        }
 
 
 
@@ -373,8 +458,7 @@ namespace PacMan.Agent.EnemyLocalization
         {
             if (_obstacleMap == null)
                 return true;
-
-            return _obstacleMap.GetLocalPointTraversibility(p) == ObstacleMap.Traversability.Free;
+            return _obstacleMap.GetLocalPointTraversibility(p) == ObstacleMapV2.Traversability.Free;
         }
 
         private void OnDrawGizmos()

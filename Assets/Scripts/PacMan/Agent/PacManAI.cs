@@ -84,7 +84,6 @@ namespace PacMan.Agent
                 {
                     int enemyId = kv.Key;
                     Vector3 estimatedPos = kv.Value;
-                    Debug.Log($"Shared PF estimate for enemy {enemyId}: {estimatedPos}");
                 }
             }
             PacManBlackboard bb;
