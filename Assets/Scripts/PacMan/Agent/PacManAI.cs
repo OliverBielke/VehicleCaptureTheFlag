@@ -87,22 +87,8 @@ namespace PacMan.Agent
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
             
-            //Get closest enemy PacMen/Ghosts
-            var enemyGhostDistance = float.MaxValue;
-            var enemyPacManDistance = float.MaxValue;
-            foreach (var enemy in visibleEnemyAgents)
-            {
-                if (enemy.isGhost)
-                {
-                    //Closest distance
-                    enemyGhostDistance = Mathf.Min(enemyGhostDistance, Vector3.Distance(enemy.transform.position, transform.position));
-                }
-                else
-                {
-                    //Closest distance
-                    enemyPacManDistance = Mathf.Min(enemyPacManDistance, Vector3.Distance(enemy.transform.position, transform.position));
-                }
-            }
+            //Get closest enemy PacMan/Ghost distances for the blackboard.
+            GetClosestEnemies(visibleEnemyAgents, out var enemyGhostDistance, out var enemyPacManDistance);
             
             if (EnemyTrackerManager.Instance != null)
             {
@@ -128,7 +114,7 @@ namespace PacMan.Agent
                     carriedFood = _agent.GetCarriedFoodCount(),
                     enemyGhostClose = enemyGhostDistance < 10f,
                     enemyPacManClose = enemyPacManDistance < 10f,
-                    shouldReturnHome = _agent.GetCarriedFoodCount() >= 3
+                    shouldReturnHome = _agent.GetCarriedFoodCount() >= 1
                 };
 
                 debugBlackboard = bb;
@@ -307,6 +293,33 @@ namespace PacMan.Agent
         }
 
 
+        /// <summary>
+        /// Get closest visible enemy PacMan and Ghost distances. 
+        /// </summary>
+        /// <param name="visibleEnemyAgents">List of the visible enemies. </param>
+        /// <param name="enemyGhostDistance">Distance to closest visible enemy ghost. </param>
+        /// <param name="enemyPacManDistance">Distance to closest visible enemy Pac Man. </param>
+        private void GetClosestEnemies(List<PacManAgentManager> visibleEnemyAgents, 
+            out float enemyGhostDistance, out float enemyPacManDistance)
+        {
+            enemyGhostDistance = float.MaxValue;
+            enemyPacManDistance = float.MaxValue;
+            foreach (var enemy in visibleEnemyAgents)
+            {
+                if (enemy.isGhost)
+                {
+                    //Closest distance
+                    enemyGhostDistance = Mathf.Min(enemyGhostDistance, Vector3.Distance(enemy.transform.position, transform.position));
+                }
+                else
+                {
+                    //Closest distance
+                    enemyPacManDistance = Mathf.Min(enemyPacManDistance, Vector3.Distance(enemy.transform.position, transform.position));
+                }
+            }
+        }
+        
+        
         /// <summary>
         /// Calculates the new path based on the _goalPosition and stores it in _waypoints.
         /// Also initializes _droneControlling. 
