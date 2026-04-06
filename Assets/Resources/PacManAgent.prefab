@@ -126,6 +126,8 @@ MonoBehaviour:
     shouldReturnHome: 0
   debugText: {fileID: 0}
   allowManualOverride: 1
+  drawMiddle: 1
+  drawAstar: 0
 --- !u!114 &6052309846596243798
 MonoBehaviour:
   m_ObjectHideFlags: 0
