@@ -8,15 +8,15 @@ namespace PacMan.Agent.BehaviorTreeFolder
 
     public enum AgentMode {Patrol, Attack, Defend, ReturnHome, Evade}
 
-    // Small blackboard: only 6 things
+    // Small blackboard
     [Serializable]
     public class PacManBlackboard
     {
         public bool isGhost;
         public bool isScared;
         public int carriedFood;
-        public int visibleEnemyCount;
-        public bool enemyVisible;
+        public bool enemyGhostClose;
+        public bool enemyPacManClose;
         public bool shouldReturnHome;
     }
 
@@ -140,7 +140,7 @@ namespace PacMan.Agent.BehaviorTreeFolder
                 // 1. If ghost and enemy visible -> Defend
                 new SequenceNode(new List<BTNode>
                 {
-                    new ConditionNode(bb => bb.isGhost && bb.enemyVisible),
+                    new ConditionNode(bb => bb.isGhost && bb.enemyPacManClose && !bb.isScared),
                     new ActionNode(AgentMode.Defend)
                 }),
 
@@ -154,14 +154,14 @@ namespace PacMan.Agent.BehaviorTreeFolder
                 // 3. If pacman, enemy visible, and not ghost -> Evade
                 new SequenceNode(new List<BTNode>
                 {
-                    new ConditionNode(bb => !bb.isGhost && bb.enemyVisible),
+                    new ConditionNode(bb => !bb.isGhost && bb.enemyGhostClose),
                     new ActionNode(AgentMode.Evade)
                 }),
 
                 // 4. If pacman and no visible enemy -> Attack
                 new SequenceNode(new List<BTNode>
                 {
-                    new ConditionNode(bb => !bb.isGhost && !bb.enemyVisible),
+                    new ConditionNode(bb => !bb.isGhost && !bb.enemyGhostClose),
                     new ActionNode(AgentMode.Attack)
                 }),
 

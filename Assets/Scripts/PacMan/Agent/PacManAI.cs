@@ -86,6 +86,24 @@ namespace PacMan.Agent
             
             var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
             PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
+            
+            //Get closest enemy PacMen/Ghosts
+            var enemyGhostDistance = float.MaxValue;
+            var enemyPacManDistance = float.MaxValue;
+            foreach (var enemy in visibleEnemyAgents)
+            {
+                if (enemy.isGhost)
+                {
+                    //Closest distance
+                    enemyGhostDistance = Mathf.Min(enemyGhostDistance, Vector3.Distance(enemy.transform.position, transform.position));
+                }
+                else
+                {
+                    //Closest distance
+                    enemyPacManDistance = Mathf.Min(enemyPacManDistance, Vector3.Distance(enemy.transform.position, transform.position));
+                }
+            }
+            
             if (EnemyTrackerManager.Instance != null)
             {
                 var estimates = EnemyTrackerManager.Instance.GetAllEstimates();
@@ -103,15 +121,13 @@ namespace PacMan.Agent
             }
             else
             {
-                var visibleEnemies = _agent.GetVisibleEnemyAgents();
-
                 bb = new PacManBlackboard
                 {
                     isGhost = _agent.IsGhost(),
                     isScared = _agent.IsScared(),
                     carriedFood = _agent.GetCarriedFoodCount(),
-                    visibleEnemyCount = visibleEnemies.Count,
-                    enemyVisible = visibleEnemies.Count > 0,
+                    enemyGhostClose = enemyGhostDistance < 10f,
+                    enemyPacManClose = enemyPacManDistance < 10f,
                     shouldReturnHome = _agent.GetCarriedFoodCount() >= 3
                 };
 
@@ -127,7 +143,6 @@ namespace PacMan.Agent
                     $"Ghost: {bb.isGhost}\n" +
                     $"Scared: {bb.isScared}\n" +
                     $"Food: {bb.carriedFood}\n" +
-                    $"VisibleEnemies: {bb.visibleEnemyCount}\n" +
                     $"Return: {bb.shouldReturnHome}";
             }
             Vector2 accel = Vector2.zero;
@@ -369,7 +384,6 @@ namespace PacMan.Agent
                     $"Mode: {_currentMode}\n" +
                     $"Ghost: {debugBlackboard.isGhost}\n" +
                     $"Food: {debugBlackboard.carriedFood}\n" +
-                    $"Enemies: {debugBlackboard.visibleEnemyCount}\n" +
                     $"Return: {debugBlackboard.shouldReturnHome}"
                 );
             }
