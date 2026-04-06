@@ -29,6 +29,10 @@ namespace PacMan.Agent
         [SerializeField] private PacManBlackboard debugBlackboard = new();
         [SerializeField] private TextMeshPro debugText;
         [SerializeField] private bool allowManualOverride = true;
+        private MapMiddleAnalyzer _middleAnalyzer;
+        private MapMiddleAnalyzer.MiddleInfo _middleInfo;
+        [SerializeField] private bool drawMiddle = true;
+        [SerializeField] private bool drawAstar = true;
         private BehaviorTree _behaviorTree;
         private AgentMode _currentMode;
         
@@ -40,15 +44,17 @@ namespace PacMan.Agent
             _mapManager = mapManager;
             var gridSize = 0.2f;
             _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize), new Vector3(1f, 1f, 1f));
-
-            // var agentRadius = 0.0f; //From the capsule collider
-            // var padding = Mathf.FloorToInt(agentRadius / gridSize) + 1;
-            // MapEditing.InflateObstacleMap(_obstacleMap, radius: padding); //Inflate obstacles
-            
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
             _behaviorTree = new BehaviorTree();
-            
+            _middleAnalyzer = new MapMiddleAnalyzer(_obstacleMap);
+            _middleInfo = _middleAnalyzer.Analyze();
+
+            Debug.Log($"Detected lanes: {_middleInfo.LaneCount}");
+            foreach (var lane in MapMiddleAnalyzer.GetLanesOrdered(_middleInfo))
+            {
+                Debug.Log($"{lane.Label} | z [{lane.MinZ}, {lane.MaxZ}] | width={lane.WidthCells} | major={lane.IsMajor}");
+            }
             var groundPlane = GameObject.Find("GroundPlane");
             var groundCollider = groundPlane.GetComponent<Collider>();
         }
@@ -373,19 +379,22 @@ namespace PacMan.Agent
         private void OnDrawGizmos()
         {
             MapEditing.DrawObstacleMap(transform, _obstacleMap, drawObstacleMap);
-            if (_waypoints != null && _waypoints.Count > 0)
+            if (drawAstar)
             {
-                Gizmos.color = Color.cyan;
-                for (int i = 0; i < _waypoints.Count - 1; i++)
+                if (_waypoints != null && _waypoints.Count > 0)
                 {
-                    Vector3 start = new Vector3(_waypoints[i].position.x, transform.position.y, _waypoints[i].position.y);
-                    Vector3 end = new Vector3(_waypoints[i + 1].position.x, transform.position.y, _waypoints[i + 1].position.y);
-                    Gizmos.DrawLine(start, end);
-                    Gizmos.DrawSphere(start, 0.1f);
+                    Gizmos.color = Color.cyan;
+                    for (int i = 0; i < _waypoints.Count - 1; i++)
+                    {
+                        Vector3 start = new Vector3(_waypoints[i].position.x, transform.position.y, _waypoints[i].position.y);
+                        Vector3 end = new Vector3(_waypoints[i + 1].position.x, transform.position.y, _waypoints[i + 1].position.y);
+                        Gizmos.DrawLine(start, end);
+                        Gizmos.DrawSphere(start, 0.1f);
+                    }
+                    // Draw last waypoint
+                    Vector3 lastPos = new Vector3(_waypoints[_waypoints.Count - 1].position.x, transform.position.y, _waypoints[_waypoints.Count - 1].position.y);
+                    Gizmos.DrawSphere(lastPos, 0.15f);
                 }
-                // Draw last waypoint
-                Vector3 lastPos = new Vector3(_waypoints[_waypoints.Count - 1].position.x, transform.position.y, _waypoints[_waypoints.Count - 1].position.y);
-                Gizmos.DrawSphere(lastPos, 0.15f);
             }
 
             if (_droneControlling != null && _initialDroneState != null)
@@ -398,6 +407,65 @@ namespace PacMan.Agent
                 Gizmos.DrawSphere(
                     new Vector3(_droneControlling.targetPoint.x, _initialDroneState.position.y,
                         _droneControlling.targetPoint.y), 0.2f);
+            }
+
+            if (drawMiddle)
+            {
+                DrawMiddleGizmos();
+            }
+        }
+        private void DrawMiddleGizmos()
+        {
+            if (_middleInfo.MiddleLeftLocalPositions == null || _middleInfo.MiddleRightLocalPositions == null)
+                return;
+
+            Gizmos.color = Color.cyan;
+            foreach (var p in _middleInfo.MiddleLeftLocalPositions)
+            {
+                Vector3 wp = transform.parent != null ? transform.parent.TransformPoint(p) : p;
+                Gizmos.DrawSphere(wp + Vector3.up * 0.15f, 0.07f);
+            }
+
+            Gizmos.color = Color.magenta;
+            foreach (var p in _middleInfo.MiddleRightLocalPositions)
+            {
+                Vector3 wp = transform.parent != null ? transform.parent.TransformPoint(p) : p;
+                Gizmos.DrawSphere(wp + Vector3.up * 0.15f, 0.07f);
+            }
+                        if (_middleInfo.Lanes == null || _middleInfo.Lanes.Count == 0)
+                return;
+
+            foreach (var lane in _middleInfo.Lanes)
+            {
+                Gizmos.color = lane.IsMajor ? Color.white : Color.gray;
+
+                foreach (var p in lane.LeftLocalPositions)
+                {
+                    Vector3 wp = transform.parent != null ? transform.parent.TransformPoint(p) : p;
+                    Gizmos.DrawSphere(wp + Vector3.up * 0.15f, 0.05f);
+                }
+
+                foreach (var p in lane.RightLocalPositions)
+                {
+                    Vector3 wp = transform.parent != null ? transform.parent.TransformPoint(p) : p;
+                    Gizmos.DrawSphere(wp + Vector3.up * 0.15f, 0.05f);
+                }
+
+                Vector3 centerWorld = transform.parent != null
+                    ? transform.parent.TransformPoint(lane.MidCenterLocal)
+                    : lane.MidCenterLocal;
+
+                Gizmos.color = lane.IsMajor ? Color.yellow : Color.red;
+                Gizmos.DrawSphere(centerWorld + Vector3.up * 0.3f, 0.12f);
+                Gizmos.DrawLine(centerWorld + Vector3.up * 0.05f, centerWorld + Vector3.up * 0.45f);
+
+            #if UNITY_EDITOR
+                    UnityEditor.Handles.color = lane.IsMajor ? Color.yellow : Color.red;
+                    UnityEditor.Handles.Label(
+                        centerWorld + Vector3.up * 0.5f,
+                        $"{lane.Label}\nwidth={lane.WidthCells}\nmajor={lane.IsMajor}"
+                    );
+            #endif
             }
         }
     }
