@@ -20,7 +20,7 @@ namespace Scripts.Map
 
         private readonly Vector3 cellScale;
         public Vector3 trueScale;
-        public float obstacleRadius = 0.4f;
+        public float obstacleRadius = 0.45f;
 
         public List<string> layerNames = new() { "Obstacle" };
         private Transform map;

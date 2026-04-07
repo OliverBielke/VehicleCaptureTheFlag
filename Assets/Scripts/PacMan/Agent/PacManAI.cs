@@ -11,9 +11,16 @@ using UnityEngine;
 using Scripts.Map;
 using PacMan.Agent.EnemyLocalization;
 using System.Reflection;
+using PacMan.Agent.RoleAssignment;
 
 namespace PacMan.Agent
-{
+{        
+    public enum StaticRole
+    {
+        None,
+        Attack,
+        Defend
+    }
     public class PacManAIDebugBT : PacManAI
     {
         private bool _hasGoal;
@@ -29,6 +36,9 @@ namespace PacMan.Agent
         [SerializeField] private PacManBlackboard debugBlackboard = new();
         [SerializeField] private TextMeshPro debugText;
         [SerializeField] private bool allowManualOverride = true;
+        [SerializeField] private StaticRole _assignedRole = StaticRole.None;
+        [SerializeField] private Vector3 _defenseAnchor;
+        [SerializeField] private bool _hasDefenseAnchor = false;
         private MapMiddleAnalyzer _middleAnalyzer;
         private MapMiddleAnalyzer.MiddleInfo _middleInfo;
         [SerializeField] private bool drawMiddle = true;
@@ -38,6 +48,27 @@ namespace PacMan.Agent
         
         private bool _visualizerLinked = false;
 
+
+
+        public StaticRole AssignedRole => _assignedRole;
+        public bool HasAssignedRole => _assignedRole != StaticRole.None;
+
+        public void SetAssignedRole(StaticRole role)
+        {
+            _assignedRole = role;
+            Debug.Log($"{name} assigned role: {_assignedRole}");
+        }
+
+        public void SetDefenseAnchor(Vector3 anchor)
+        {
+            _defenseAnchor = anchor;
+            _hasDefenseAnchor = true;
+        }
+
+        public void ClearDefenseAnchor()
+        {
+            _hasDefenseAnchor = false;
+        }
         public override void Initialize(MapManager mapManager)
         {
             _agent = GetComponent<PacManAgentManager>();
@@ -57,6 +88,7 @@ namespace PacMan.Agent
             }
             var groundPlane = GameObject.Find("GroundPlane");
             var groundCollider = groundPlane.GetComponent<Collider>();
+            RoleAssigner.Instance?.RegisterAgent(this);
         }
 
         public override PacManAction Tick()
@@ -120,7 +152,7 @@ namespace PacMan.Agent
                 debugBlackboard = bb;
             }
 
-            _currentMode = _behaviorTree.Evaluate(bb);
+            _currentMode = GetModeFromAssignedRole(bb);
 
             if (debugText != null)
             {
@@ -367,18 +399,26 @@ namespace PacMan.Agent
             return true;
         }
         
-
-        /// <summary>
-        /// Checks if the ParticleFilter localization is inside an obstacle.
-        /// </summary>
-        /// <param name="p">particle filter prediction. </param>
-        /// <returns>Boolean. </returns>
-
-        private bool IsTraversableForPF(Vector3 p)
+        private AgentMode GetModeFromAssignedRole(PacManBlackboard bb)
         {
-            return true;
+            switch (_assignedRole)
+            {
+                case StaticRole.Attack:
+                    if (!bb.isGhost && bb.enemyGhostClose)
+                        return AgentMode.Evade;
+
+                    if (bb.shouldReturnHome)
+                        return AgentMode.ReturnHome;
+
+                    return AgentMode.Attack;
+
+                case StaticRole.Defend:
+                    return AgentMode.Defend;
+
+                default:
+                    return AgentMode.Patrol;
+            }
         }
-        
         private void OnGUI()
         {
             if (!Application.isPlaying)
@@ -393,7 +433,8 @@ namespace PacMan.Agent
                 float y = Screen.height - screenPos.y;
 
                 GUI.Label(
-                    new Rect(x, y, 220f, 120f),
+                    new Rect(x, y, 240f, 140f),
+                    $"Role: {AssignedRole}\n" +
                     $"Mode: {_currentMode}\n" +
                     $"Ghost: {debugBlackboard.isGhost}\n" +
                     $"Food: {debugBlackboard.carriedFood}\n" +
