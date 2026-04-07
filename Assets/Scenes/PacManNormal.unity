@@ -57575,9 +57575,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8459c0b26e534e00b7427ac05c21c2d0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PacMan.Agent.Debugging.DebugManager
-  vO: 0
+  obstacleMap: 0
   aStar: 0
-  stateTransitions: 0
 --- !u!4 &1859348695
 Transform:
   m_ObjectHideFlags: 0

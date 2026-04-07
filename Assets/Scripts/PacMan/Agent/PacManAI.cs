@@ -35,6 +35,7 @@ namespace PacMan.Agent
         [SerializeField] private bool drawAstar = true;
         private BehaviorTree _behaviorTree;
         private AgentMode _currentMode;
+        private AgentMode _previousMode;
         
         private bool _visualizerLinked = false;
 
@@ -122,6 +123,12 @@ namespace PacMan.Agent
 
             _currentMode = _behaviorTree.Evaluate(bb);
 
+            // CHECK FOR MODE SWITCH
+            if (_currentMode != _previousMode)
+            {
+                _hasGoal = false; 
+            }
+            
             if (debugText != null)
             {
                 debugText.text =
@@ -164,6 +171,9 @@ namespace PacMan.Agent
                 accel = manualAccel;
             }
 
+            // UPDATE PREVIOUS MODE FOR NEXT TICK
+            _previousMode = _currentMode;
+            
             return new PacManAction
             {
                 Acceleration = accel
@@ -172,12 +182,31 @@ namespace PacMan.Agent
         
         private Vector2 GetAttackAcceleration(List<GameObject> activeFoodPositions)
         {
+            // 1. VALIDATE EXISTING GOAL
+            if (_hasGoal)
+            {
+                // Condition A: Did we reach the goal?
+                if (Vector3.Distance(transform.localPosition, _goalPosition) < 0.2f)
+                {
+                    _hasGoal = false;
+                }
+                // Condition B: Was our targeted food eaten by someone else?
+                else if (_currentFoodTarget != null && !_currentFoodTarget.activeSelf)
+                {
+                    _hasGoal = false;
+                }
+            }
+            
+            // FIND NEW GOAL IF NEEDED
             if (!_hasGoal)
             {
                 var gf = new GoalFinding(agent: _agent);
                 var closestFood = gf.GetClosestEatableFood(activeFoodPositions, debug: true);
                 _goalPosition = closestFood;
 
+                // Map the returned Vector3 back to the actual GameObject so we can track if it gets deactivated
+                _currentFoodTarget = activeFoodPositions.FirstOrDefault(f => f.transform.position == closestFood);
+                
                 bool pathOk = MakePath();
 
                 if (!pathOk)
@@ -267,6 +296,9 @@ namespace PacMan.Agent
 
         private Vector2 GetDefendAcceleration()
         {
+            // Remove any previous goal
+            _hasGoal = false;
+            
             var visibleEnemies = _agent.GetVisibleEnemyAgents();
             if (visibleEnemies != null && visibleEnemies.Count > 0)
             {
@@ -281,6 +313,8 @@ namespace PacMan.Agent
 
         private Vector2 GetEvadeAcceleration(Vector3 velocity)
         {
+            
+            
             var visibleEnemies = _agent.GetVisibleEnemyAgents();
             if (visibleEnemies != null && visibleEnemies.Count > 0)
             {
@@ -446,7 +480,8 @@ namespace PacMan.Agent
                     $"Mode: {_currentMode}\n" +
                     $"Ghost: {debugBlackboard.isGhost}\n" +
                     $"Food: {debugBlackboard.carriedFood}\n" +
-                    $"Return: {debugBlackboard.shouldReturnHome}"
+                    $"Return: {debugBlackboard.shouldReturnHome}\n" +
+                    $"Has goal: {_hasGoal}"
                 );
             }
         }

@@ -47,8 +47,14 @@ namespace PacMan.Agent.PathFinding
             
             if (!IsTraversableAStar(goal))
             {
-                Debug.LogError($"A* goal {goal} is not traversable. Cannot plan path.");
-                return null;
+                Debug.LogError($"A* goal {goal} is not traversable. Trying closest position.");
+                goal = FindNearestFreeCell(goal, gridSize);
+
+                if (!IsTraversableAStar(goal))
+                {
+                    Debug.LogError($"A* goal {goal} is not traversable. Not even surrounding nodes. Can't plan path.");
+                    return null;
+                }
             }
             
             List<AStarNode> openSet = new();
