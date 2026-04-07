@@ -205,9 +205,58 @@ namespace PacMan.Agent
 
         private Vector2 GetReturnHomeAcceleration()
         {
-            // Blue home is left, Red home is right
-            float x = CompareTag("Blue") ? -1f : 1f;
-            return new Vector2(x, 0f);
+            // 1. Identify team to determine the correct middle line points
+            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+            List<Vector3> homePoints = isBlue ? _middleInfo.MiddleLeftLocalPositions : _middleInfo.MiddleRightLocalPositions;
+
+            // Fallback if the MapMiddle analyzer failed or hasn't run
+            if (homePoints == null || homePoints.Count == 0)
+            {
+                return new Vector2(isBlue ? -1f : 1f, 0f);
+            }
+
+            // 2. Find the closest home point on the middle line
+            Vector3 currentPos = transform.localPosition;
+            Vector3 closestHomePoint = homePoints[0];
+            float minDistance = float.MaxValue;
+
+            foreach (var point in homePoints)
+            {
+                float dist = Vector3.Distance(currentPos, point);
+                if (dist < minDistance)
+                {
+                    minDistance = dist;
+                    closestHomePoint = point;
+                }
+            }
+
+            // 3. Set the goal and generate the path
+            // We check the distance to ensure we recalculate if the goal shifts (e.g., agent was previously tracking a food item)
+            if (!_hasGoal || Vector3.Distance(_goalPosition, closestHomePoint) > 1.0f)
+            {
+                _goalPosition = closestHomePoint;
+                bool pathOk = MakePath();
+
+                // If pathfinding fails (e.g., A* returns < 2 nodes because we are already touching the point)
+                // Fall back to moving horizontally so the agent crosses the line to score
+                if (!pathOk)
+                {
+                    _hasGoal = false;
+                    return new Vector2(isBlue ? -1f : 1f, 0f);
+                }
+
+                _hasGoal = true;
+            }
+
+            // 4. Follow the calculated path
+            if (_droneControlling == null || _initialDroneState == null)
+            {
+                _hasGoal = false;
+                return Vector2.zero;
+            }
+
+            _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
+            return new Vector2(_droneControlling.h, _droneControlling.v);
         }
 
         private Vector2 GetPatrolAcceleration()

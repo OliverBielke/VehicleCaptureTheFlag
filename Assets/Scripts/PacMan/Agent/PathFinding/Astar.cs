@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
-using Quaternion = UnityEngine.Quaternion;
 using Vector3 = UnityEngine.Vector3;
 using Scripts.Map;
+using PacMan.Agent.Debugging;
 
 namespace PacMan.Agent.PathFinding
 {
@@ -30,6 +30,26 @@ namespace PacMan.Agent.PathFinding
             
             start = FindNearestFreeCell(RoundToGrid(start, gridSize), gridSize);
             goal = RoundToGrid(goal, gridSize);
+
+            // Mark the start and goal positions with an X so they stand out
+            if (DebugManager.Instance != null && DebugManager.Instance.aStar)
+            {
+                var markerSize = 0.3f; // Adjust this if the cross is too big or small
+        
+                // Draw a Yellow cross for the Start position
+                Debug.DrawLine(start + new Vector3(-markerSize, 0, -markerSize), start + new Vector3(markerSize, 0, markerSize), Color.yellow, 3f);
+                Debug.DrawLine(start + new Vector3(-markerSize, 0, markerSize), start + new Vector3(markerSize, 0, -markerSize), Color.yellow, 3f);
+
+                // Draw a Red cross for the Goal position
+                Debug.DrawLine(goal + new Vector3(-markerSize, 0, -markerSize), goal + new Vector3(markerSize, 0, markerSize), Color.red, 3f);
+                Debug.DrawLine(goal + new Vector3(-markerSize, 0, markerSize), goal + new Vector3(markerSize, 0, -markerSize), Color.red, 3f);
+            }
+            
+            if (!IsTraversableAStar(goal))
+            {
+                Debug.LogError($"A* goal {goal} is not traversable. Cannot plan path.");
+                return null;
+            }
             
             List<AStarNode> openSet = new();
             HashSet<Vector3> closedSet = new();
@@ -44,16 +64,33 @@ namespace PacMan.Agent.PathFinding
             {
                 iter++;
                 
-                AStarNode currentNode = openSet.OrderBy(n => n.FCost).First();
+                var currentNode = openSet.OrderBy(n => n.FCost).First();
                 openSet.Remove(currentNode);
                 closedSet.Add(currentNode.Position);
                 
                 _astarExploredNodes.Add(currentNode.Position);
+
+                var distToGoal = Vector2.Distance(
+                    new Vector2(currentNode.Position.x, currentNode.Position.z), 
+                    new Vector2(goal.x, goal.z)
+                );
                 
-                if (Vector3.Distance(currentNode.Position, goal) < gridSize * Mathf.Sqrt(2))
+                if (distToGoal < gridSize / 2f) //If at the goal grid
                 {
                     Debug.Log($"A* found path in {iter} iterations");
-                    List<Vector3> path = ReconstructPath(currentNode);
+                    var path = ReconstructPath(currentNode);
+                    
+                    // Draw the final winning path in Green.
+                    if (DebugManager.Instance != null && DebugManager.Instance.aStar)
+                    {
+                        for (var i = 0; i < path.Count - 1; i++)
+                        {
+                            // Drawing this for slightly longer (e.g., 3 seconds) so it stays 
+                            // visible just a bit longer than the search tree
+                            Debug.DrawLine(path[i], path[i + 1], Color.green, 3f);
+                        }
+                    }
+                    
                     return path;
                 }
                 
@@ -71,10 +108,22 @@ namespace PacMan.Agent.PathFinding
                     {
                         neighborNode = new AStarNode(pos: neighborPos, parent: currentNode, goal: goal);
                         openSet.Add(neighborNode);
+                        
+                        // Draw cyan lines for newly explored paths. They will vanish after 2 seconds.
+                        if (DebugManager.Instance != null && DebugManager.Instance.aStar)
+                        {
+                            Debug.DrawLine(currentNode.Position, neighborPos, Color.cyan, 2f);
+                        }
                     }
                     else if (neighborNode.CostToCome(parent: currentNode) < neighborNode.GCost)
                     {
                         neighborNode.SwitchParent(currentNode);
+                        
+                        // Draw magenta lines if A* found a faster shortcut to an already explored node
+                        if (DebugManager.Instance != null && DebugManager.Instance.aStar)
+                        {
+                            Debug.DrawLine(currentNode.Position, neighborPos, Color.magenta, 2f);
+                        }
                     }
                 }
             }
@@ -116,7 +165,10 @@ namespace PacMan.Agent.PathFinding
             /// <returns>The estimated cost to go. </returns>
             private float Heuristic(Vector3 goal)
             {
-                return Vector3.Distance(Position, goal);
+                return Vector2.Distance(
+                    new Vector2(Position.x, Position.z), 
+                    new Vector2(goal.x, goal.z)
+                );
             }
 
             /// <summary>
@@ -209,7 +261,9 @@ namespace PacMan.Agent.PathFinding
                         pos.y,
                         pos.z + dz * gridSize
                     );
-                    neighbors.Add(neighbor);
+                    
+                    // Snap the neighbor to the grid immediately
+                    neighbors.Add(RoundToGrid(neighbor, gridSize));
                 }
             }
     
@@ -242,13 +296,13 @@ namespace PacMan.Agent.PathFinding
             if (IsTraversableAStar(origin))
                 return origin;
 
-            for (int r = 1; r <= maxRadius; r++)
+            for (var r = 1; r <= maxRadius; r++)
             {
-                for (int dx = -r; dx <= r; dx++)
+                for (var dx = -r; dx <= r; dx++)
                 {
-                    for (int dz = -r; dz <= r; dz++)
+                    for (var dz = -r; dz <= r; dz++)
                     {
-                        Vector3 candidate = new Vector3(
+                        var candidate = new Vector3(
                             origin.x + dx * gridSize,
                             origin.y,
                             origin.z + dz * gridSize
