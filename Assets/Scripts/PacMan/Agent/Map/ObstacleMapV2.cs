@@ -8,6 +8,9 @@ namespace Scripts.Map
 {
     public class ObstacleMapV2
     {
+        // So other scripts can easily find the active map
+        public static ObstacleMapV2 Instance { get; private set; }
+        
         private List<GameObject> obstacles;
 
         public Vector3 margin = Vector3.one;
@@ -41,6 +44,10 @@ namespace Scripts.Map
             obstacleMap.margin = margin;
             obstacleMap.inflationRadiusCells = inflationRadiusCells;
             obstacleMap.GenerateMap();
+            
+            // Store this map as the global instance so our DebugManager can find it
+            Instance = obstacleMap;
+            
             return obstacleMap;
         }
 
@@ -245,6 +252,43 @@ namespace Scripts.Map
             Free = 0,
             Blocked = 1,
             Unmapped = 2,
+        }
+        
+        /// <summary>
+        /// Draws the grid map in the Scene view using Unity Gizmos.
+        /// </summary>
+        public void DrawMapGizmos()
+        {
+            // Safety check to ensure the map has been generated
+            if (traversabilityPerCell == null) return;
+
+            foreach (var kvp in traversabilityPerCell)
+            {
+                // Set colors based on traversability state
+                if (kvp.Value == Traversability.Blocked)
+                {
+                    Gizmos.color = new Color(1f, 0f, 0f, 0.4f); // Semi-transparent Red
+                }
+                else if (kvp.Value == Traversability.Free)
+                {
+                    Gizmos.color = new Color(0f, 1f, 0f, 0.1f); // Very faint Green
+                }
+                else
+                {
+                    continue; // Skip unmapped areas
+                }
+
+                // Reconstruct the 3D cell location from the 2D dictionary key
+                // Note: The dictionary uses x and y, but your 3D grid maps 'y' to the 'z' axis
+                Vector3Int cellLocation = new Vector3Int(kvp.Key.x, 0, kvp.Key.y);
+        
+                // Find the physical center of the cell
+                Vector3 center = CellToWorld(cellLocation) + trueScale / 2f;
+
+                // Draw the cube. We multiply the scale by 0.95f to leave a tiny gap 
+                // between cells, making the grid pattern visible.
+                Gizmos.DrawCube(center, trueScale * 0.95f);
+            }
         }
     }
 }

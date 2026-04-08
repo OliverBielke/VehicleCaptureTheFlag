@@ -137,7 +137,7 @@ namespace PacMan.Agent.BehaviorTreeFolder
         {
             return new SelectorNode(new List<BTNode>
             {
-                // 1. If ghost and enemy visible -> Defend
+                // 1. If ghost and enemy PacMan close and is not scared -> Defend
                 new SequenceNode(new List<BTNode>
                 {
                     new ConditionNode(bb => bb.isGhost && bb.enemyPacManClose && !bb.isScared),
@@ -151,17 +151,17 @@ namespace PacMan.Agent.BehaviorTreeFolder
                     new ActionNode(AgentMode.ReturnHome)
                 }),
 
-                // 3. If pacman, enemy visible, and not ghost -> Evade
+                // 3. If pacman, enemy ghost close, and not ghost -> Evade
                 new SequenceNode(new List<BTNode>
                 {
                     new ConditionNode(bb => !bb.isGhost && bb.enemyGhostClose),
                     new ActionNode(AgentMode.Evade)
                 }),
 
-                // 4. If pacman and no visible enemy -> Attack
+                // 4. If pacman and no visible enemy or is scared -> Attack
                 new SequenceNode(new List<BTNode>
                 {
-                    new ConditionNode(bb => !bb.isGhost && !bb.enemyGhostClose),
+                    new ConditionNode(bb => (!bb.isGhost && !bb.enemyGhostClose) || bb.isScared),
                     new ActionNode(AgentMode.Attack)
                 }),
 
