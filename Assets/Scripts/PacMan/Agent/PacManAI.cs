@@ -48,7 +48,8 @@ namespace PacMan.Agent
         
         private bool _visualizerLinked = false;
 
-
+        private AgentMode _previousMode;
+        private const float AnchorReachedDistance = 0.35f;
 
         public StaticRole AssignedRole => _assignedRole;
         public bool HasAssignedRole => _assignedRole != StaticRole.None;
@@ -153,7 +154,11 @@ namespace PacMan.Agent
             }
 
             _currentMode = GetModeFromAssignedRole(bb);
-
+            if (_currentMode != _previousMode)
+            {
+                ClearCurrentPath();
+                _previousMode = _currentMode;
+            }
             if (debugText != null)
             {
                 debugText.text =
@@ -251,15 +256,57 @@ namespace PacMan.Agent
         private Vector2 GetDefendAcceleration()
         {
             var visibleEnemies = _agent.GetVisibleEnemyAgents();
+
+            // 1) If an enemy is visible, chase it
             if (visibleEnemies != null && visibleEnemies.Count > 0)
             {
                 Vector3 myPos = transform.localPosition;
                 Vector3 enemyPos = visibleEnemies[0].transform.localPosition;
                 Vector3 dir = (enemyPos - myPos).normalized;
+
+                ClearCurrentPath(); // stop following anchor path while actively chasing
                 return new Vector2(dir.x, dir.z);
             }
 
-            return Vector2.zero;
+            // 2) Otherwise go to the assigned defense anchor
+            if (!_hasDefenseAnchor)
+                return Vector2.zero;
+
+            Vector3 myLocalPos = transform.localPosition;
+
+            // If already close enough to the anchor, stay there
+            if (Vector3.Distance(myLocalPos, _defenseAnchor) <= AnchorReachedDistance)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            // Rebuild path if needed or if the goal changed
+            bool needNewPath = !_hasGoal || Vector3.Distance(_goalPosition, _defenseAnchor) > 0.05f;
+
+            if (needNewPath)
+            {
+                _goalPosition = _defenseAnchor;
+
+                bool pathOk = MakePath();
+                if (!pathOk)
+                {
+                    ClearCurrentPath();
+                    return Vector2.zero;
+                }
+
+                _hasGoal = true;
+            }
+
+            if (_droneControlling == null || _initialDroneState == null)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
+
+            return new Vector2(_droneControlling.h, _droneControlling.v);
         }
 
         private Vector2 GetEvadeAcceleration(Vector3 velocity)
@@ -361,6 +408,16 @@ namespace PacMan.Agent
             _initialDroneState = _agent.transform;
             var curPos = _initialDroneState.localPosition;
 
+            var startTrav = _obstacleMap.GetLocalPointTraversibility(curPos);
+            var goalTrav = _obstacleMap.GetLocalPointTraversibility(_goalPosition);
+
+            Debug.Log(
+                $"MakePath() | agent={name} | mode={_currentMode} | " +
+                $"start={curPos} | goal={_goalPosition} | " +
+                $"startTrav={startTrav} | goalTrav={goalTrav} | " +
+                $"hasDefenseAnchor={_hasDefenseAnchor} | defenseAnchor={_defenseAnchor}"
+            );
+
             Astar aStar = new Astar(_obstacleMap);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition);
 
@@ -386,15 +443,7 @@ namespace PacMan.Agent
                 return false;
             }
 
-            // _waypoints = _pathSmoother.GetSmoothedPath(nodes);
             _waypoints = nodes;
-            if (_waypoints == null || _waypoints.Count < 2)
-            {
-                Debug.LogWarning("MakePath failed: smoother returned invalid waypoints.");
-                _droneControlling = null;
-                return false;
-            }
-
             _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState);
             return true;
         }
@@ -443,7 +492,12 @@ namespace PacMan.Agent
             }
         }
         
-        
+        private void ClearCurrentPath()
+        {
+            _hasGoal = false;
+            _waypoints = null;
+            _droneControlling = null;
+        }
         private void OnDrawGizmos()
         {
             MapEditing.DrawObstacleMap(transform, _obstacleMap, drawObstacleMap);

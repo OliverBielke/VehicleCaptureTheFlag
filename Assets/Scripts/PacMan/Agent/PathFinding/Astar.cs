@@ -27,9 +27,10 @@ namespace PacMan.Agent.PathFinding
         public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal)
         {
             const float gridSize = 0.2f;
-            
+            start.y = 0f;
+            goal.y = 0f;
             start = FindNearestFreeCell(RoundToGrid(start, gridSize), gridSize);
-            goal = RoundToGrid(goal, gridSize);
+            goal  = FindNearestFreeCell(RoundToGrid(goal, gridSize), gridSize);
             
             List<AStarNode> openSet = new();
             HashSet<Vector3> closedSet = new();

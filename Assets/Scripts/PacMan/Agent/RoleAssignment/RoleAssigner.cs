@@ -186,36 +186,163 @@ namespace PacMan.Agent.RoleAssignment
                 return;
             }
 
-            var orderedLanes = lanes.OrderBy(l => l.MidCenterLocal.z).ToList();
+            var availableLanes = lanes.OrderBy(l => l.MidCenterLocal.z).ToList();
 
+            // 1 defender -> middle lane
             if (defenders.Count == 1)
             {
-                Vector3 anchor = orderedLanes[orderedLanes.Count / 2].MidCenterLocal;
-                defenders[0].SetDefenseAnchor(anchor);
-                Debug.Log($"{defenders[0].name} defense anchor -> {anchor}");
+                var defender = defenders[0];
+                Team team = TeamAssignmentUtil.CheckTeam(defender.gameObject);
+
+                var middleLane = availableLanes[availableLanes.Count / 2];
+                Vector3 anchor = GetDefenseAnchorForLane(middleLane, team, 2f);
+
+                defender.SetDefenseAnchor(anchor);
+                Debug.Log($"{defender.name} defense anchor -> {anchor} | lane={middleLane.Label}");
                 return;
             }
 
-            if (defenders.Count == 2)
+            // 2 defenders -> always cover bottom and top, choose best pairing
+            if (defenders.Count == 2 && availableLanes.Count >= 2)
             {
-                Vector3 bottomAnchor = orderedLanes.First().MidCenterLocal;
-                Vector3 topAnchor = orderedLanes.Last().MidCenterLocal;
+                var bottomLane = availableLanes.First();
+                var topLane = availableLanes.Last();
 
-                defenders[0].SetDefenseAnchor(bottomAnchor);
-                defenders[1].SetDefenseAnchor(topAnchor);
+                var d0 = defenders[0];
+                var d1 = defenders[1];
 
-                Debug.Log($"{defenders[0].name} defense anchor -> {bottomAnchor}");
-                Debug.Log($"{defenders[1].name} defense anchor -> {topAnchor}");
+                Team t0 = TeamAssignmentUtil.CheckTeam(d0.gameObject);
+                Team t1 = TeamAssignmentUtil.CheckTeam(d1.gameObject);
+
+                Vector3 d0BottomAnchor = GetDefenseAnchorForLane(bottomLane, t0, 2f);
+                Vector3 d0TopAnchor = GetDefenseAnchorForLane(topLane, t0, 2f);
+                Vector3 d1BottomAnchor = GetDefenseAnchorForLane(bottomLane, t1, 2f);
+                Vector3 d1TopAnchor = GetDefenseAnchorForLane(topLane, t1, 2f);
+
+                float pairingA =
+                    (d0.transform.localPosition - d0BottomAnchor).sqrMagnitude +
+                    (d1.transform.localPosition - d1TopAnchor).sqrMagnitude;
+
+                float pairingB =
+                    (d0.transform.localPosition - d0TopAnchor).sqrMagnitude +
+                    (d1.transform.localPosition - d1BottomAnchor).sqrMagnitude;
+
+                if (pairingA <= pairingB)
+                {
+                    d0.SetDefenseAnchor(d0BottomAnchor);
+                    d1.SetDefenseAnchor(d1TopAnchor);
+
+                    Debug.Log($"{d0.name} defense anchor -> {d0BottomAnchor} | lane={bottomLane.Label}");
+                    Debug.Log($"{d1.name} defense anchor -> {d1TopAnchor} | lane={topLane.Label}");
+                }
+                else
+                {
+                    d0.SetDefenseAnchor(d0TopAnchor);
+                    d1.SetDefenseAnchor(d1BottomAnchor);
+
+                    Debug.Log($"{d0.name} defense anchor -> {d0TopAnchor} | lane={topLane.Label}");
+                    Debug.Log($"{d1.name} defense anchor -> {d1BottomAnchor} | lane={bottomLane.Label}");
+                }
+
                 return;
             }
 
-            for (int i = 0; i < defenders.Count; i++)
+            // 3+ defenders -> greedy closest unique lane assignment
+            var assignments = new List<(PacManAIDebugBT defender, MapMiddleAnalyzer.Lane lane, float distSqr)>();
+
+            foreach (var defender in defenders)
             {
-                int laneIndex = Mathf.RoundToInt((float)i / (defenders.Count - 1) * (orderedLanes.Count - 1));
-                Vector3 anchor = orderedLanes[laneIndex].MidCenterLocal;
-                defenders[i].SetDefenseAnchor(anchor);
-                Debug.Log($"{defenders[i].name} defense anchor -> {anchor}");
+                Team team = TeamAssignmentUtil.CheckTeam(defender.gameObject);
+
+                foreach (var lane in availableLanes)
+                {
+                    Vector3 candidateAnchor = GetDefenseAnchorForLane(lane, team, 2f);
+                    float distSqr = (defender.transform.localPosition - candidateAnchor).sqrMagnitude;
+                    assignments.Add((defender, lane, distSqr));
+                }
             }
+
+            var usedDefenders = new HashSet<PacManAIDebugBT>();
+            var usedLanes = new HashSet<MapMiddleAnalyzer.Lane>();
+
+            foreach (var candidate in assignments.OrderBy(a => a.distSqr))
+            {
+                if (usedDefenders.Contains(candidate.defender) || usedLanes.Contains(candidate.lane))
+                    continue;
+
+                Team team = TeamAssignmentUtil.CheckTeam(candidate.defender.gameObject);
+                Vector3 anchor = GetDefenseAnchorForLane(candidate.lane, team, 2f);
+
+                candidate.defender.SetDefenseAnchor(anchor);
+                usedDefenders.Add(candidate.defender);
+                usedLanes.Add(candidate.lane);
+
+                Debug.Log($"{candidate.defender.name} defense anchor -> {anchor} | lane={candidate.lane.Label}");
+            }
+
+            // Fallback if there are more defenders than lanes
+            foreach (var defender in defenders)
+            {
+                if (usedDefenders.Contains(defender))
+                    continue;
+
+                Team team = TeamAssignmentUtil.CheckTeam(defender.gameObject);
+
+                var closestLane = availableLanes
+                    .OrderBy(l =>
+                    {
+                        Vector3 anchor = GetDefenseAnchorForLane(l, team, 2f);
+                        return (defender.transform.localPosition - anchor).sqrMagnitude;
+                    })
+                    .First();
+
+                Vector3 fallbackAnchor = GetDefenseAnchorForLane(closestLane, team, 2f);
+                defender.SetDefenseAnchor(fallbackAnchor);
+
+                Debug.Log($"{defender.name} fallback defense anchor -> {fallbackAnchor} | lane={closestLane.Label}");
+            }
+        }
+        private Vector3 GetDefenseAnchorForLane(MapMiddleAnalyzer.Lane lane, Team team, float xOffset = 1.2f)
+        {
+            Vector3 anchor = lane.MidCenterLocal;
+            anchor.y = 0f;
+
+            if (team == Team.Blue)
+                anchor.x -= xOffset;
+            else if (team == Team.Red)
+                anchor.x += xOffset;
+
+            return FindNearestFreePoint(anchor, team);
+        }
+
+        private Vector3 FindNearestFreePoint(Vector3 desired, Team team, float step = 0.2f, int maxSteps = 12)
+        {
+            desired.y = 0f;
+
+            if (_obstacleMap.GetLocalPointTraversibility(desired) == ObstacleMapV2.Traversability.Free)
+                return desired;
+
+            for (int i = 1; i <= maxSteps; i++)
+            {
+                float dx = i * step;
+
+                Vector3 towardOwnSide = desired + new Vector3(team == Team.Blue ? -dx : dx, 0f, 0f);
+                Vector3 towardOtherSide = desired + new Vector3(team == Team.Blue ? dx : -dx, 0f, 0f);
+
+                if (_obstacleMap.GetLocalPointTraversibility(towardOwnSide) == ObstacleMapV2.Traversability.Free)
+                    return towardOwnSide;
+
+                if (_obstacleMap.GetLocalPointTraversibility(towardOtherSide) == ObstacleMapV2.Traversability.Free)
+                    return towardOtherSide;
+            }
+
+            return desired;
+        }
+
+        private Vector3 laneFallback(Vector3 p)
+        {
+            p.y = 0f;
+            return p;
         }
     }
 }
