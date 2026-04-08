@@ -11,9 +11,16 @@ using UnityEngine;
 using Scripts.Map;
 using PacMan.Agent.EnemyLocalization;
 using System.Reflection;
+using PacMan.Agent.RoleAssignment;
 
 namespace PacMan.Agent
-{
+{        
+    public enum StaticRole
+    {
+        None,
+        Attack,
+        Defend
+    }
     public class PacManAIDebugBT : PacManAI
     {
         private bool _hasGoal;
@@ -29,6 +36,9 @@ namespace PacMan.Agent
         [SerializeField] private PacManBlackboard debugBlackboard = new();
         [SerializeField] private TextMeshPro debugText;
         [SerializeField] private bool allowManualOverride = true;
+        [SerializeField] private StaticRole _assignedRole = StaticRole.None;
+        [SerializeField] private Vector3 _defenseAnchor;
+        [SerializeField] private bool _hasDefenseAnchor = false;
         private MapMiddleAnalyzer _middleAnalyzer;
         private MapMiddleAnalyzer.MiddleInfo _middleInfo;
         [SerializeField] private bool drawMiddle = true;
@@ -36,9 +46,29 @@ namespace PacMan.Agent
         private BehaviorTree _behaviorTree;
         private AgentMode _currentMode;
         private AgentMode _previousMode;
-        
         private bool _visualizerLinked = false;
 
+        private const float AnchorReachedDistance = 0.35f;
+
+        public StaticRole AssignedRole => _assignedRole;
+        public bool HasAssignedRole => _assignedRole != StaticRole.None;
+
+        public void SetAssignedRole(StaticRole role)
+        {
+            _assignedRole = role;
+            Debug.Log($"{name} assigned role: {_assignedRole}");
+        }
+
+        public void SetDefenseAnchor(Vector3 anchor)
+        {
+            _defenseAnchor = anchor;
+            _hasDefenseAnchor = true;
+        }
+
+        public void ClearDefenseAnchor()
+        {
+            _hasDefenseAnchor = false;
+        }
         public override void Initialize(MapManager mapManager)
         {
             _agent = GetComponent<PacManAgentManager>();
@@ -58,6 +88,7 @@ namespace PacMan.Agent
             }
             var groundPlane = GameObject.Find("GroundPlane");
             var groundCollider = groundPlane.GetComponent<Collider>();
+            RoleAssigner.Instance?.RegisterAgent(this);
         }
 
         public override PacManAction Tick()
@@ -121,14 +152,12 @@ namespace PacMan.Agent
                 debugBlackboard = bb;
             }
 
-            _currentMode = _behaviorTree.Evaluate(bb);
-
-            // CHECK FOR MODE SWITCH
+            _currentMode = GetModeFromAssignedRole(bb);
             if (_currentMode != _previousMode)
             {
-                _hasGoal = false; 
+                ClearCurrentPath();
+                _previousMode = _currentMode;
             }
-            
             if (debugText != null)
             {
                 debugText.text =
@@ -300,15 +329,57 @@ namespace PacMan.Agent
             _hasGoal = false;
             
             var visibleEnemies = _agent.GetVisibleEnemyAgents();
+
+            // 1) If an enemy is visible, chase it
             if (visibleEnemies != null && visibleEnemies.Count > 0)
             {
                 Vector3 myPos = transform.localPosition;
                 Vector3 enemyPos = visibleEnemies[0].transform.localPosition;
                 Vector3 dir = (enemyPos - myPos).normalized;
+
+                ClearCurrentPath(); // stop following anchor path while actively chasing
                 return new Vector2(dir.x, dir.z);
             }
 
-            return Vector2.zero;
+            // 2) Otherwise go to the assigned defense anchor
+            if (!_hasDefenseAnchor)
+                return Vector2.zero;
+
+            Vector3 myLocalPos = transform.localPosition;
+
+            // If already close enough to the anchor, stay there
+            if (Vector3.Distance(myLocalPos, _defenseAnchor) <= AnchorReachedDistance)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            // Rebuild path if needed or if the goal changed
+            bool needNewPath = !_hasGoal || Vector3.Distance(_goalPosition, _defenseAnchor) > 0.05f;
+
+            if (needNewPath)
+            {
+                _goalPosition = _defenseAnchor;
+
+                bool pathOk = MakePath();
+                if (!pathOk)
+                {
+                    ClearCurrentPath();
+                    return Vector2.zero;
+                }
+
+                _hasGoal = true;
+            }
+
+            if (_droneControlling == null || _initialDroneState == null)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
+
+            return new Vector2(_droneControlling.h, _droneControlling.v);
         }
 
         private Vector2 GetEvadeAcceleration(Vector3 velocity)
@@ -412,6 +483,16 @@ namespace PacMan.Agent
             _initialDroneState = _agent.transform;
             var curPos = _initialDroneState.localPosition;
 
+            var startTrav = _obstacleMap.GetLocalPointTraversibility(curPos);
+            var goalTrav = _obstacleMap.GetLocalPointTraversibility(_goalPosition);
+
+            Debug.Log(
+                $"MakePath() | agent={name} | mode={_currentMode} | " +
+                $"start={curPos} | goal={_goalPosition} | " +
+                $"startTrav={startTrav} | goalTrav={goalTrav} | " +
+                $"hasDefenseAnchor={_hasDefenseAnchor} | defenseAnchor={_defenseAnchor}"
+            );
+
             Astar aStar = new Astar(_obstacleMap);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition);
 
@@ -437,31 +518,31 @@ namespace PacMan.Agent
                 return false;
             }
 
-            // _waypoints = _pathSmoother.GetSmoothedPath(nodes);
             _waypoints = nodes;
-            if (_waypoints == null || _waypoints.Count < 2)
-            {
-                Debug.LogWarning("MakePath failed: smoother returned invalid waypoints.");
-                _droneControlling = null;
-                return false;
-            }
-
             _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState);
             return true;
         }
         
-
-        /// <summary>
-        /// Checks if the ParticleFilter localization is inside an obstacle.
-        /// </summary>
-        /// <param name="p">particle filter prediction. </param>
-        /// <returns>Boolean. </returns>
-
-        private bool IsTraversableForPF(Vector3 p)
+        private AgentMode GetModeFromAssignedRole(PacManBlackboard bb)
         {
-            return true;
+            switch (_assignedRole)
+            {
+                case StaticRole.Attack:
+                    if (!bb.isGhost && bb.enemyGhostClose)
+                        return AgentMode.Evade;
+
+                    if (bb.shouldReturnHome)
+                        return AgentMode.ReturnHome;
+
+                    return AgentMode.Attack;
+
+                case StaticRole.Defend:
+                    return AgentMode.Defend;
+
+                default:
+                    return AgentMode.Patrol;
+            }
         }
-        
         private void OnGUI()
         {
             if (!Application.isPlaying)
@@ -476,7 +557,8 @@ namespace PacMan.Agent
                 float y = Screen.height - screenPos.y;
 
                 GUI.Label(
-                    new Rect(x, y, 220f, 120f),
+                    new Rect(x, y, 240f, 140f),
+                    $"Role: {AssignedRole}\n" +
                     $"Mode: {_currentMode}\n" +
                     $"Ghost: {debugBlackboard.isGhost}\n" +
                     $"Food: {debugBlackboard.carriedFood}\n" +
@@ -486,7 +568,12 @@ namespace PacMan.Agent
             }
         }
         
-        
+        private void ClearCurrentPath()
+        {
+            _hasGoal = false;
+            _waypoints = null;
+            _droneControlling = null;
+        }
         private void OnDrawGizmos()
         {
             MapEditing.DrawObstacleMap(transform, _obstacleMap, drawObstacleMap);

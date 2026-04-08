@@ -385,7 +385,41 @@ namespace PacMan.Agent.Map
 
             return bestLane;
         }
+        public static Vector3 GetDefendAnchorForLane(Lane lane, bool isBlueTeam, ObstacleMapV2 map, float offsetFromMiddle = 1.2f,
+            float searchStep = 0.2f,
+            int maxSteps = 20)
+        {
+            Vector3 desired = lane.MidCenterLocal;
+            desired.x += isBlueTeam ? -offsetFromMiddle : offsetFromMiddle;
+            desired.y = 0f;
 
+            if (map.GetLocalPointTraversibility(desired) == ObstacleMapV2.Traversability.Free)
+                return desired;
+
+            for (int i = 1; i <= maxSteps; i++)
+            {
+                float dx = i * searchStep;
+
+                Vector3 a = desired + new Vector3(dx, 0f, 0f);
+                Vector3 b = desired - new Vector3(dx, 0f, 0f);
+
+                bool aFree = map.GetLocalPointTraversibility(a) == ObstacleMapV2.Traversability.Free;
+                bool bFree = map.GetLocalPointTraversibility(b) == ObstacleMapV2.Traversability.Free;
+
+                if (isBlueTeam)
+                {
+                    if (bFree) return b;
+                    if (aFree) return a;
+                }
+                else
+                {
+                    if (aFree) return a;
+                    if (bFree) return b;
+                }
+            }
+
+            return lane.MidCenterLocal;
+        }
         public static Lane GetLaneByOrderedIndex(MiddleInfo info, int orderedIndex)
         {
             if (info.Lanes == null || info.Lanes.Count == 0)
