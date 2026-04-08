@@ -46,10 +46,8 @@ namespace PacMan.Agent
         private BehaviorTree _behaviorTree;
         private AgentMode _currentMode;
         private AgentMode _previousMode;
-        
         private bool _visualizerLinked = false;
 
-        private AgentMode _previousMode;
         private const float AnchorReachedDistance = 0.35f;
 
         public StaticRole AssignedRole => _assignedRole;
