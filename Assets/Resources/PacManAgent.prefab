@@ -125,6 +125,9 @@ MonoBehaviour:
   _hasAttackAnchor: 0
   drawMiddle: 0
   drawAstar: 1
+  attackPatrolSwitchSteps: 30
+  attackPatrolOffset: 1
+  attackPatrolArriveDistance: 0.15
 --- !u!114 &6052309846596243798
 MonoBehaviour:
   m_ObjectHideFlags: 0

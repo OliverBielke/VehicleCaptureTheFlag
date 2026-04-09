@@ -58,6 +58,10 @@ namespace PacMan.Agent
         private MapMiddleAnalyzer.MiddleInfo _middleInfo;
         [SerializeField] private bool drawMiddle = true;
         [SerializeField] private bool drawAstar = true;
+        [Header("Attack Patrol")]
+        [SerializeField] private int attackPatrolSwitchSteps = 30;
+        [SerializeField] private float attackPatrolOffset = 1.0f;
+        [SerializeField] private float attackPatrolArriveDistance = 0.15f;
         private AgentMode _currentMode;
         private AgentMode _previousMode;
         private bool _visualizerLinked = false;
@@ -663,9 +667,11 @@ namespace PacMan.Agent
             if (!_hasAttackAnchor)
                 return anchor;
 
-            int stepBucket = Mathf.FloorToInt(_agent.GetStepsSinceMatchStart() / 80f);
+            int switchSteps = Mathf.Max(1, attackPatrolSwitchSteps);
+            int stepBucket = Mathf.FloorToInt(_agent.GetStepsSinceMatchStart() / (float)switchSteps);
             bool usePositiveOffset = ((stepBucket + Mathf.Abs(GetInstanceID())) % 2) == 0;
-            float zOffset = usePositiveOffset ? 1.0f : -1.0f;
+            float zOffsetMagnitude = Mathf.Max(0.1f, attackPatrolOffset);
+            float zOffset = usePositiveOffset ? zOffsetMagnitude : -zOffsetMagnitude;
 
             Vector3 patrolPoint = anchor + new Vector3(0f, 0f, zOffset);
 
@@ -896,7 +902,7 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: attackPatrolArriveDistance);
         }
         private Vector2 ExecuteEvade(BTDecision decision, Vector3 velocity)
         {
