@@ -49,6 +49,9 @@ namespace PacMan.Agent
         private AgentMode _currentMode;
         private AgentMode _previousMode;
         private bool _visualizerLinked = false;
+        
+        // To track respawns
+        private int _previousRespawnStep = -1;
 
         private const float AnchorReachedDistance = 0.35f;
 
@@ -93,10 +96,22 @@ namespace PacMan.Agent
             var groundCollider = groundPlane.GetComponent<Collider>();
             RoleAssigner.Instance?.RegisterAgent(this);
             
+            // Set the initial respawn step
+            if (_agent != null) _previousRespawnStep = _agent.GetLastRespawnStep();
+            
         }
 
         public override PacManAction Tick()
         {
+            // Respawn Detection
+            var currentRespawnStep = _agent.GetLastRespawnStep();
+            if (currentRespawnStep != _previousRespawnStep)
+            {
+                // The agent just died and respawned. Reset the path!
+                ClearCurrentPath();
+                _previousRespawnStep = currentRespawnStep;
+            }
+            
             _agent.GetTimeRemaining();
             _agent.GetScore();
 
