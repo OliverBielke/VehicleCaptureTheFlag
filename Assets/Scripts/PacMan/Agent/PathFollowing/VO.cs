@@ -26,9 +26,9 @@ namespace PacMan.Agent.PathFollowing
         private const float TimeHorizon = 8.0f;           // Dynamic obstacles
         private const float WallTimeHorizon = 0.2f;       // Static obstacles (CBF-style)
         private const int AccelSamples = 100;               // How many points to check on our acceleration grid
-        private const float AgentRadiusPadding =  0.05f;
+        private const float AgentRadiusPadding =  0.01f;
         private const float OpponentRadiusPadding = 0.5f;
-        private const float StaticObstacleRadiusPadding = 0.05f;
+        private const float StaticObstacleRadiusPadding = 0.01f;
         
         public VO(Transform vehicleTransform, float maxAcceleration)
         {
