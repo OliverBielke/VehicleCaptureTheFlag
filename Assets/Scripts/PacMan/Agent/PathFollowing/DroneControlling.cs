@@ -17,7 +17,7 @@ namespace PacMan.Agent.PathFollowing
         private const float MAX_DRONE_SPEED = 15f;
         private const float K_VELOCITY_DIRECTION = 15.0f;
         public bool HasReachedGoal = false;
-        public float StoppingDistance = 0.5f; // Adjust based on the size of your car/goal
+        public float StoppingDistance = 0.2f; // Adjust based on the size of your car/goal
         
         // Outputs
         public float h { get; set; }  // Horizontal acceleration command [-1, 1]
@@ -293,7 +293,7 @@ namespace PacMan.Agent.PathFollowing
 
             if (Vector2.Distance(currentPos2D, goal2D) <= StoppingDistance)
             {
-                Debug.Log("Goal reached!");
+                // Debug.Log("Goal reached!");
                 HasReachedGoal = true;
                 h = 0f;
                 v = 0f;

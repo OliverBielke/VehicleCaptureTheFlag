@@ -30,10 +30,12 @@ namespace PacMan.Agent
         private DroneControlling _droneControlling;
         private Transform _initialDroneState;
         private GameObject _currentFoodTarget;
+        private BehaviorTree<DefenderBlackboard> _defenderTree;
+        private BehaviorTree<AttackerBlackboard> _attackerTree;
+        private BTDecision _lastDecision;
+        private string _btReason = "-";
         [SerializeField] private bool drawObstacleMap = false;
         [Header("Debug")]
-        [SerializeField] private bool useManualBlackboard = false;
-        [SerializeField] private PacManBlackboard debugBlackboard = new();
         [SerializeField] private TextMeshPro debugText;
         [SerializeField] private bool allowManualOverride = true;
         [SerializeField] private StaticRole _assignedRole = StaticRole.None;
@@ -43,7 +45,6 @@ namespace PacMan.Agent
         private MapMiddleAnalyzer.MiddleInfo _middleInfo;
         [SerializeField] private bool drawMiddle = true;
         [SerializeField] private bool drawAstar = true;
-        private BehaviorTree _behaviorTree;
         private AgentMode _currentMode;
         private AgentMode _previousMode;
         private bool _visualizerLinked = false;
@@ -77,138 +78,75 @@ namespace PacMan.Agent
             _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize), new Vector3(1f, 1f, 1f));
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
-            _behaviorTree = new BehaviorTree();
+            _defenderTree = DefenderTreeFactory.Create();
+            _attackerTree = AttackerTreeFactory.Create();
             _middleAnalyzer = new MapMiddleAnalyzer(_obstacleMap);
             _middleInfo = _middleAnalyzer.Analyze();
 
-            Debug.Log($"Detected lanes: {_middleInfo.LaneCount}");
-            foreach (var lane in MapMiddleAnalyzer.GetLanesOrdered(_middleInfo))
-            {
-                Debug.Log($"{lane.Label} | z [{lane.MinZ}, {lane.MaxZ}] | width={lane.WidthCells} | major={lane.IsMajor}");
-            }
+            // Debug.Log($"Detected lanes: {_middleInfo.LaneCount}");
+            // foreach (var lane in MapMiddleAnalyzer.GetLanesOrdered(_middleInfo))
+            // {
+            //     Debug.Log($"{lane.Label} | z [{lane.MinZ}, {lane.MaxZ}] | width={lane.WidthCells} | major={lane.IsMajor}");
+            // }
             var groundPlane = GameObject.Find("GroundPlane");
             var groundCollider = groundPlane.GetComponent<Collider>();
             RoleAssigner.Instance?.RegisterAgent(this);
+            
         }
 
         public override PacManAction Tick()
         {
-            
             _agent.GetTimeRemaining();
             _agent.GetScore();
-            bool isGhost = _agent.IsGhost();
-            bool isScared = _agent.IsScared();
-            float scaredDuration = _agent.GetScaredRemainingDuration();
 
-            float carriedFoodCount = _agent.GetCarriedFoodCount();
+            Vector3 velocity = _agent.GetVelocity();
 
-            List<GameObject> foodPositions = _agent.GetFoodObjects(); // Positions of food or last know position of food
-            var activeFoodPositions = foodPositions.FindAll(food => food.activeSelf); // Food that is currently on the ground
-            var inactiveFoodLatestPositions = foodPositions.FindAll(food => !food.activeSelf); // Food that is currently carried. The gameObject position will report where it was picked up from. Might be useful in some scenarios.
-            List<GameObject> capsulePositions = _agent.GetCapsuleObjects();
-            
-            var isLocalPointTraversable = _obstacleMap?.GetLocalPointTraversibility(transform.localPosition);
-            
-            var teamAgentManagers = _agent.GetTeamAgents(); //Agents in team, including this agent
-            var friendlyAgentManagers = _agent.GetFriendlyAgents(); //Agents in team, except this agent
+            _lastDecision = EvaluateCurrentRoleTree();
+            _currentMode = _lastDecision.Mode;
 
-            // Since the RigidBody is updated server side and the client only syncs position, rigidbody.Velocity does not report a velocity
-            var velocity = _agent.GetVelocity(); // Use the manager method to get the true velocity from the server
-            // friendlyAgentManager.GetVelocity(); // Given the damping, max velocity magnitude is around 2.34
-            
-            var visibleEnemyAgents = _agent.GetVisibleEnemyAgents(); // Enemy agents in LoS. Know percise information
-            PacManObservations fetchEnemyObservations = _agent.GetEnemyObservations(); // Enemies out of LoS. Know partial information. 
-            
-            //Get closest enemy PacMan/Ghost distances for the blackboard.
-            GetClosestEnemies(visibleEnemyAgents, out var enemyGhostDistance, out var enemyPacManDistance);
-            
-            if (EnemyTrackerManager.Instance != null)
-            {
-                var estimates = EnemyTrackerManager.Instance.GetAllEstimates();
-
-                foreach (var kv in estimates)
-                {
-                    int enemyId = kv.Key;
-                    Vector3 estimatedPos = kv.Value;
-                }
-            }
-            PacManBlackboard bb;
-            if (useManualBlackboard)
-            {
-                bb = debugBlackboard;
-            }
-            else
-            {
-                bb = new PacManBlackboard
-                {
-                    isGhost = _agent.IsGhost(),
-                    isScared = _agent.IsScared(),
-                    carriedFood = _agent.GetCarriedFoodCount(),
-                    enemyGhostClose = enemyGhostDistance < 10f,
-                    enemyPacManClose = enemyPacManDistance < 10f,
-                    shouldReturnHome = _agent.GetCarriedFoodCount() >= 1
-                };
-
-                debugBlackboard = bb;
-            }
-
-            _currentMode = GetModeFromAssignedRole(bb);
             if (_currentMode != _previousMode)
             {
                 ClearCurrentPath();
-                _previousMode = _currentMode;
-            }
-            if (debugText != null)
-            {
-                debugText.text =
-                    $"Mode: {_currentMode}\n" +
-                    $"Ghost: {bb.isGhost}\n" +
-                    $"Scared: {bb.isScared}\n" +
-                    $"Food: {bb.carriedFood}\n" +
-                    $"Return: {bb.shouldReturnHome}";
-            }
-            Vector2 accel = Vector2.zero;
-
-            switch (_currentMode)
-            {
-                case AgentMode.Attack:
-                    accel = GetAttackAcceleration(activeFoodPositions);
-                    break;
-
-                case AgentMode.ReturnHome:
-                    accel = GetReturnHomeAcceleration();
-                    break;
-
-                case AgentMode.Defend:
-                    accel = GetDefendAcceleration();
-                    break;
-
-                case AgentMode.Evade:
-                    accel = GetEvadeAcceleration(velocity);
-                    break;
-
-                case AgentMode.Patrol:
-                default:
-                    accel = GetAttackAcceleration(activeFoodPositions);
-                    break;
             }
 
-            // Manual override with keyboard
+            Vector2 accel = ExecuteDecision(_lastDecision, velocity);
+
             Vector2 manualAccel = GetManualAcceleration();
             if (manualAccel != Vector2.zero)
             {
                 accel = manualAccel;
             }
 
-            // UPDATE PREVIOUS MODE FOR NEXT TICK
             _previousMode = _currentMode;
-            
+
             return new PacManAction
             {
                 Acceleration = accel
             };
+        }
+        private BTDecision EvaluateCurrentRoleTree()
+        {
+            switch (_assignedRole)
+            {
+                case StaticRole.Defend:
+                {
+                    DefenderBlackboard bb = BuildDefenderBlackboard();
+                    _btReason = bb.debugReason;
+                    return _defenderTree.Evaluate(bb);
+                }
+
+                case StaticRole.Attack:
+                {
+                    AttackerBlackboard bb = BuildAttackerBlackboard();
+                    _btReason = bb.debugReason;
+                    return _attackerTree.Evaluate(bb);
+                }
+
+                default:
+                    _btReason = "No assigned role";
+                    return BTDecision.Running(AgentMode.Patrol, "NoRole");
             }
-        
+        }
         private Vector2 GetAttackAcceleration(List<GameObject> activeFoodPositions)
         {
             // 1. VALIDATE EXISTING GOAL
@@ -486,12 +424,12 @@ namespace PacMan.Agent
             var startTrav = _obstacleMap.GetLocalPointTraversibility(curPos);
             var goalTrav = _obstacleMap.GetLocalPointTraversibility(_goalPosition);
 
-            Debug.Log(
-                $"MakePath() | agent={name} | mode={_currentMode} | " +
-                $"start={curPos} | goal={_goalPosition} | " +
-                $"startTrav={startTrav} | goalTrav={goalTrav} | " +
-                $"hasDefenseAnchor={_hasDefenseAnchor} | defenseAnchor={_defenseAnchor}"
-            );
+            // Debug.Log(
+            //     $"MakePath() | agent={name} | mode={_currentMode} | " +
+            //     $"start={curPos} | goal={_goalPosition} | " +
+            //     $"startTrav={startTrav} | goalTrav={goalTrav} | " +
+            //     $"hasDefenseAnchor={_hasDefenseAnchor} | defenseAnchor={_defenseAnchor}"
+            // );
 
             Astar aStar = new Astar(_obstacleMap);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition);
@@ -522,26 +460,350 @@ namespace PacMan.Agent
             _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState);
             return true;
         }
-        
-        private AgentMode GetModeFromAssignedRole(PacManBlackboard bb)
+
+        private DefenderBlackboard BuildDefenderBlackboard()
         {
-            switch (_assignedRole)
+            DefenderBlackboard bb = new DefenderBlackboard();
+
+            Vector3 myPos = transform.localPosition;
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+
+            PacManAgentManager visibleEnemyPacman = null;
+            float closestPacmanDist = float.MaxValue;
+
+            if (visibleEnemies != null)
             {
-                case StaticRole.Attack:
-                    if (!bb.isGhost && bb.enemyGhostClose)
-                        return AgentMode.Evade;
+                foreach (var enemy in visibleEnemies)
+                {
+                    if (!enemy.IsGhost())
+                    {
+                        float dist = Vector3.Distance(myPos, enemy.transform.localPosition);
+                        if (dist < closestPacmanDist)
+                        {
+                            closestPacmanDist = dist;
+                            visibleEnemyPacman = enemy;
+                        }
+                    }
+                }
+            }
 
-                    if (bb.shouldReturnHome)
-                        return AgentMode.ReturnHome;
+            if (visibleEnemyPacman != null)
+            {
+                bb.enemyPacmanIntruderSuspected = true;
+                bb.suspectedIntruderPosition = visibleEnemyPacman.transform.localPosition;
+                bb.debugReason = "Visible intruder";
+            }
 
-                    return AgentMode.Attack;
+            bb.enemyLikelyCrossingMyLane = false;
+            bb.predictedCrossingPoint = Vector3.zero;
 
-                case StaticRole.Defend:
-                    return AgentMode.Defend;
+            bb.safeMiddlePillsAvailable = false;
+            bb.safeMiddlePillPosition = Vector3.zero;
+
+            bb.formationPoint = _defenseAnchor;
+            bb.dropZonePoint = _defenseAnchor;
+
+            bb.outsideDefensiveZone =
+                _hasDefenseAnchor &&
+                Vector3.Distance(myPos, _defenseAnchor) > 1.25f;
+
+            if (string.IsNullOrEmpty(bb.debugReason))
+                bb.debugReason = "Default defend state";
+
+            return bb;
+        }
+        private AttackerBlackboard BuildAttackerBlackboard()
+        {
+            AttackerBlackboard bb = new AttackerBlackboard();
+
+            Vector3 myPos = transform.localPosition;
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+            var foodObjects = _agent.GetFoodObjects();
+            var activeFood = _agent.GetFoodObjects().FindAll(f => f.activeSelf &&
+                                                TeamAssignmentUtil.CheckTeam(f) != TeamAssignmentUtil.CheckTeam(gameObject));
+
+            float closestGhostDist = float.MaxValue;
+            PacManAgentManager closestGhost = null;
+
+            if (visibleEnemies != null)
+            {
+                foreach (var enemy in visibleEnemies)
+                {
+                    if (enemy.IsGhost())
+                    {
+                        float dist = Vector3.Distance(myPos, enemy.transform.localPosition);
+                        if (dist < closestGhostDist)
+                        {
+                            closestGhostDist = dist;
+                            closestGhost = enemy;
+                        }
+                    }
+                }
+            }
+
+            bool ghostNearby = closestGhost != null && closestGhostDist < 8f;
+            bool carryingFood = _agent.GetCarriedFoodCount() >= 1;
+
+            bb.shouldReturnHome = ghostNearby && carryingFood;
+
+            Vector3 homeTarget = GetClosestHomePoint();
+            bb.homeTargetPosition = homeTarget;
+
+            GameObject closestFoodObj = null;
+            float closestFoodDist = float.MaxValue;
+
+            foreach (var food in activeFood)
+            {
+                float dist = Vector3.Distance(myPos, food.transform.localPosition);
+                if (dist < closestFoodDist)
+                {
+                    closestFoodDist = dist;
+                    closestFoodObj = food;
+                }
+            }
+
+            if (closestFoodObj != null && !ghostNearby)
+            {
+                bb.safeEnemyPillsAvailable = true;
+                bb.enemyPillTargetPosition = closestFoodObj.transform.localPosition;
+            }
+
+            bb.safeMiddlePillsAvailable = false;
+            bb.middlePillTargetPosition = Vector3.zero;
+
+            bb.attackPositionTarget = _defenseAnchor;
+            bb.patrolTargetPosition = _defenseAnchor;
+
+            bb.outsideAttackZone =
+                _hasDefenseAnchor &&
+                Vector3.Distance(myPos, _defenseAnchor) > 1.5f;
+
+            if (bb.shouldReturnHome)
+                bb.debugReason = "Threat nearby while carrying food";
+            else if (bb.safeEnemyPillsAvailable)
+                bb.debugReason = "Safe enemy pill available";
+            else if (bb.outsideAttackZone)
+                bb.debugReason = "Outside attack zone";
+            else
+                bb.debugReason = "Patrol attack zone";
+
+            return bb;
+        }
+
+        private Vector3 GetClosestHomePoint()
+        {
+            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+            List<Vector3> homePoints = isBlue
+                ? _middleInfo.MiddleLeftLocalPositions
+                : _middleInfo.MiddleRightLocalPositions;
+
+            if (homePoints == null || homePoints.Count == 0)
+            {
+                return transform.localPosition;
+            }
+
+            Vector3 currentPos = transform.localPosition;
+            Vector3 closestHomePoint = homePoints[0];
+            float minDistance = float.MaxValue;
+
+            foreach (var point in homePoints)
+            {
+                float dist = Vector3.Distance(currentPos, point);
+                if (dist < minDistance)
+                {
+                    minDistance = dist;
+                    closestHomePoint = point;
+                }
+            }
+
+            return closestHomePoint;
+        }
+        private Vector2 ExecuteDecision(BTDecision decision, Vector3 velocity)
+        {
+            if (decision == null)
+                return Vector2.zero;
+
+            switch (decision.DebugLabel)
+            {
+                // Defender
+                case "InterceptIntruder":
+                    return ExecuteInterceptIntruder(decision);
+
+                case "BlockCrossing":
+                    return ExecuteBlockCrossing(decision);
+
+                case "CollectSafeMiddlePills":
+                    return ExecuteDefenderCollectSafeMiddlePills(decision);
+
+                case "MoveToFormation":
+                    return ExecuteMoveToFormation(decision);
+
+                case "HoldDropZone":
+                    return ExecuteHoldDropZone(decision);
+
+                // Attacker
+                case "ReturnHome":
+                    return ExecuteReturnHome(decision);
+
+                case "CollectEnemyPills":
+                    return ExecuteCollectEnemyPills(decision);
+
+                case "CollectSafeMiddlePills_Attack":
+                    return ExecuteAttackerCollectSafeMiddlePills(decision);
+
+                case "MoveToAttackPosition":
+                    return ExecuteMoveToAttackPosition(decision);
+
+                case "PatrolAttackZone":
+                    return ExecutePatrolAttackZone(decision);
+
+                case "Evade":
+                    return ExecuteEvade(decision, velocity);
 
                 default:
-                    return AgentMode.Patrol;
+                    ClearCurrentPath();
+                    return Vector2.zero;
             }
+        }
+        private Vector2 MoveToTarget(Vector3 target, float arriveDistance = 0.35f)
+        {
+            Vector3 myLocalPos = transform.localPosition;
+
+            if (Vector3.Distance(myLocalPos, target) <= arriveDistance)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            bool needNewPath = !_hasGoal || Vector3.Distance(_goalPosition, target) > 0.05f;
+
+            if (needNewPath)
+            {
+                _goalPosition = target;
+
+                bool pathOk = MakePath();
+                if (!pathOk)
+                {
+                    ClearCurrentPath();
+                    return Vector2.zero;
+                }
+
+                _hasGoal = true;
+            }
+
+            if (_droneControlling == null || _initialDroneState == null)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
+            return new Vector2(_droneControlling.h, _droneControlling.v);
+        }
+        private Vector2 ExecuteInterceptIntruder(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f);
+        }
+        private Vector2 ExecuteBlockCrossing(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+        }
+        private Vector2 ExecuteDefenderCollectSafeMiddlePills(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f);
+        }
+
+        private Vector2 ExecuteMoveToFormation(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+        }
+        private Vector2 ExecuteHoldDropZone(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.30f);
+        }
+        private Vector2 ExecuteReturnHome(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.30f);
+        }
+        private Vector2 ExecuteCollectEnemyPills(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.20f);
+        }
+        private Vector2 ExecuteAttackerCollectSafeMiddlePills(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f);
+        }
+        private Vector2 ExecuteMoveToAttackPosition(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+        }
+        private Vector2 ExecutePatrolAttackZone(BTDecision decision)
+        {
+            if (decision == null || !decision.HasTarget)
+            {
+                ClearCurrentPath();
+                return Vector2.zero;
+            }
+
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+        }
+        private Vector2 ExecuteEvade(BTDecision decision, Vector3 velocity)
+        {
+            return GetEvadeAcceleration(velocity);
         }
         private void OnGUI()
         {
@@ -551,21 +813,27 @@ namespace PacMan.Agent
             Vector3 worldPos = transform.position + Vector3.up * 2f;
             Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
 
-            if (screenPos.z > 0f)
-            {
-                float x = screenPos.x;
-                float y = Screen.height - screenPos.y;
+            if (screenPos.z <= 0f)
+                return;
 
-                GUI.Label(
-                    new Rect(x, y, 240f, 140f),
-                    $"Role: {AssignedRole}\n" +
-                    $"Mode: {_currentMode}\n" +
-                    $"Ghost: {debugBlackboard.isGhost}\n" +
-                    $"Food: {debugBlackboard.carriedFood}\n" +
-                    $"Return: {debugBlackboard.shouldReturnHome}\n" +
-                    $"Has goal: {_hasGoal}"
-                );
-            }
+            float x = screenPos.x;
+            float y = Screen.height - screenPos.y;
+
+            string btLabel = _lastDecision != null ? _lastDecision.DebugLabel : "-";
+            string targetText = (_lastDecision != null && _lastDecision.HasTarget)
+                ? _lastDecision.TargetPosition.ToString("F2")
+                : "-";
+
+            GUI.Label(
+                new Rect(x, y, 280f, 180f),
+                $"Role: {_assignedRole}\n" +
+                $"Mode: {_currentMode}\n" +
+                $"BT: {btLabel}\n" +
+                $"Reason: {_btReason}\n" +
+                $"Has goal: {_hasGoal}\n" +
+                $"Has target: {(_lastDecision != null && _lastDecision.HasTarget)}\n" +
+                $"Target: {targetText}"
+            );
         }
         
         private void ClearCurrentPath()
