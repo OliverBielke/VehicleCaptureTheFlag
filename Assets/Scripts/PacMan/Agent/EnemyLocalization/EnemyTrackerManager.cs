@@ -285,7 +285,7 @@ namespace PacMan.Agent.EnemyLocalization
             if (!_enemyFilters.TryGetValue(enemyId, out var pf))
                 return false;
 
-            estimate = pf.GetEstimatedPosition();
+            estimate = SnapEstimateToTraversable(pf.GetEstimatedPosition());
             return true;
         }
 
@@ -295,7 +295,7 @@ namespace PacMan.Agent.EnemyLocalization
 
             foreach (var kv in _enemyFilters)
             {
-                result[kv.Key] = kv.Value.GetEstimatedPosition();
+                result[kv.Key] = SnapEstimateToTraversable(kv.Value.GetEstimatedPosition());
             }
 
             return result;
@@ -392,9 +392,9 @@ namespace PacMan.Agent.EnemyLocalization
             if (IsTraversable(point))
                 return point;
 
-            float maxRadius = 2f;
-            float radiusStep = 0.25f;
-            int angleSteps = 32;
+            float maxRadius = 4f;
+            float radiusStep = 1f;
+            int angleSteps = 8;
 
             Vector3 bestPoint = point;
             float bestDistSq = float.MaxValue;
@@ -445,6 +445,16 @@ namespace PacMan.Agent.EnemyLocalization
         private Vector3 CorrectNoisyObservationPosition(Vector3 rawObservation)
         {
             Vector3 clamped = ClampPointToTrackerBounds(rawObservation);
+
+            if (_obstacleMap == null)
+                return clamped;
+
+            return SnapToNearestFreeSpace(clamped);
+        }
+
+        private Vector3 SnapEstimateToTraversable(Vector3 estimate)
+        {
+            Vector3 clamped = ClampPointToTrackerBounds(estimate);
 
             if (_obstacleMap == null)
                 return clamped;
