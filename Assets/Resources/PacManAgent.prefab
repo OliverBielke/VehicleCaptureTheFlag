@@ -116,14 +116,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   drawObstacleMap: 0
-  useManualBlackboard: 0
-  debugBlackboard:
-    isGhost: 0
-    isScared: 0
-    carriedFood: 0
-    enemyGhostClose: 0
-    enemyPacManClose: 0
-    shouldReturnHome: 0
   debugText: {fileID: 0}
   allowManualOverride: 1
   _assignedRole: 0

@@ -12,7 +12,6 @@ namespace PacMan.Agent.PathFinding
         private readonly ObstacleMapV2 _obstacleMap;
         private readonly List<Vector3> _astarExploredNodes = new();
         
-        
         public Astar(ObstacleMapV2 obstacleMap)
         {
             _obstacleMap = obstacleMap;
@@ -48,7 +47,7 @@ namespace PacMan.Agent.PathFinding
             
             if (!IsTraversableAStar(goal))
             {
-                Debug.LogError($"A* goal {goal} is not traversable. Trying closest position.");
+                // Debug.LogError($"A* goal {goal} is not traversable. Trying closest position.");
                 goal = FindNearestFreeCell(goal, gridSize);
 
                 if (!IsTraversableAStar(goal))
@@ -84,7 +83,7 @@ namespace PacMan.Agent.PathFinding
                 
                 if (distToGoal < gridSize / 2f) //If at the goal grid
                 {
-                    Debug.Log($"A* found path in {iter} iterations");
+                    // Debug.Log($"A* found path in {iter} iterations");
                     var path = ReconstructPath(currentNode);
                     
                     // Draw the final winning path in Green.
