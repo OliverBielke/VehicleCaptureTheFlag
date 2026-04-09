@@ -1,6 +1,7 @@
 using UnityEngine;
 using System.Linq;
 using System.Collections.Generic;
+using PacMan.Agent.Debugging;
 
 namespace PacMan.Agent.PathFollowing
 {
@@ -29,26 +30,22 @@ namespace PacMan.Agent.PathFollowing
         private const float OpponentRadiusPadding = 0.5f;
         private const float StaticObstacleRadiusPadding = 0.05f;
         
-        // --- Debugging ---
-        private readonly bool _debug;
-        
-        public VO(Transform vehicleTransform, float maxAcceleration, bool debug)
+        public VO(Transform vehicleTransform, float maxAcceleration)
         {
             _maxAcceleration = maxAcceleration;
-            _vehicleRadius = vehicleTransform.GetComponent<Collider>().bounds.extents.z + AgentRadiusPadding; 
-            _debug = debug;
+            _vehicleRadius = vehicleTransform.GetComponent<Collider>().bounds.extents.z + AgentRadiusPadding;
         }
 
         public (float, float) GetSafeAcceleration(Transform myTransform, Vector3 currentVelocity, 
-            float intendedH, float intendedV, GameObject[] otherDrones, Collider[] staticObstacles
-            )
+            float intendedH, float intendedV, List<GameObject> lowRiskDrones, List<GameObject> highRiskDrones, 
+            Collider[] staticObstacles)
         {
             var currentVelocity2 = new Vector2(currentVelocity.x, currentVelocity.z);
 
-            if (_debug)
+            if (DebugManager.Instance != null && DebugManager.Instance.vO)
             {
                 // Visualize Agent's Current State & Intent
-                VisualizeAgentAndObstacles(myTransform, currentVelocity2, intendedH, intendedV, otherDrones);
+                VisualizeAgent(myTransform, currentVelocity2, intendedH, intendedV);
             }
             
             // Clamp intent to the physical capabilities of this specific drone model
@@ -63,11 +60,27 @@ namespace PacMan.Agent.PathFollowing
             //Get the obstacles
             var obstacleList = new List<VehicleState>();
 
-            foreach (var drone in otherDrones)
+            foreach (var drone in highRiskDrones)
             {
                 // Safety check: Skip ourselves if we accidentally ended up in the _otherDrone array!
                 if (drone.transform == myTransform) continue;
-                obstacleList.Add(ConvertDroneToState(drone));
+                obstacleList.Add(ConvertDroneToState(drone, highRisk: true));
+                if (DebugManager.Instance != null && DebugManager.Instance.vO)
+                {
+                    DrawDebugCircle(drone.transform.position, obstacleList[^1].Radius, Color.red);
+                    
+                }
+            }
+            foreach (var drone in lowRiskDrones)
+            {
+                // Safety check: Skip ourselves if we accidentally ended up in the _otherDrone array!
+                if (drone.transform == myTransform) continue;
+                obstacleList.Add(ConvertDroneToState(drone, highRisk: false));
+                if (DebugManager.Instance != null && DebugManager.Instance.vO)
+                {
+                    DrawDebugCircle(drone.transform.position, obstacleList[^1].Radius, Color.red);
+                    
+                }
             }
             
             var wallPlanes = new List<(Vector2 Normal, float Distance, Vector2 ClosestPoint)>();
@@ -76,39 +89,40 @@ namespace PacMan.Agent.PathFollowing
                 var closest3D = obstacle.ClosestPoint(myTransform.position);
                 var dir3D = myTransform.position - closest3D;
                 var dist3D = dir3D.magnitude;
-        
+
                 // If we are literally inside the wall, skip to avoid math errors (Unity will physically push us out anyway)
-                if (dist3D < 0.001f) continue; 
-        
+                if (dist3D < 0.001f) continue;
+
                 // The normal points AWAY from the wall, towards the drone
                 var normal2D = new Vector2(dir3D.x, dir3D.z).normalized;
-        
+
                 // Calculate effective distance from the edge of the drone to the padded wall
                 var totalPadding = _vehicleRadius + StaticObstacleRadiusPadding;
                 var effDist = Mathf.Max(0f, dist3D - totalPadding);
-        
+
                 wallPlanes.Add((normal2D, effDist, new Vector2(closest3D.x, closest3D.z)));
                 
                 
-                if (!_debug)
+                if (DebugManager.Instance != null && DebugManager.Instance.vO)
                 {
-                    continue;
+                    // --- NEW: Extended Wall Visualization ---
+                    // 1. Find the 3D point where the padded wall boundary sits
+                    var paddedWallPoint3D =
+                        closest3D + new Vector3(normal2D.x, 0, normal2D.y) * StaticObstacleRadiusPadding;
+
+                    // 2. Calculate the tangent (perpendicular to the normal) to draw the flat surface of the plane
+                    var wallTangent = new Vector3(-normal2D.y, 0, normal2D.x);
+
+                    // 3. Draw an orange line representing the padded boundary (extends 2 units in both directions)
+                    Debug.DrawLine(paddedWallPoint3D - wallTangent * 2f, paddedWallPoint3D + wallTangent * 2f,
+                        new Color(1f, 0.5f, 0f));
+
+                    // 4. (Optional) Draw a short grey ray showing the normal direction pointing away from the wall
+                    Debug.DrawRay(paddedWallPoint3D, new Vector3(normal2D.x, 0, normal2D.y), Color.grey);
+
                 }
-                
-                // --- NEW: Extended Wall Visualization ---
-                // 1. Find the 3D point where the padded wall boundary sits
-                var paddedWallPoint3D = closest3D + new Vector3(normal2D.x, 0, normal2D.y) * StaticObstacleRadiusPadding;
-                    
-                // 2. Calculate the tangent (perpendicular to the normal) to draw the flat surface of the plane
-                var wallTangent = new Vector3(-normal2D.y, 0, normal2D.x);
-                    
-                // 3. Draw an orange line representing the padded boundary (extends 2 units in both directions)
-                Debug.DrawLine(paddedWallPoint3D - wallTangent * 2f, paddedWallPoint3D + wallTangent * 2f, new Color(1f, 0.5f, 0f)); 
-                    
-                // 4. (Optional) Draw a short grey ray showing the normal direction pointing away from the wall
-                Debug.DrawRay(paddedWallPoint3D, new Vector3(normal2D.x, 0, normal2D.y), Color.grey);
             }
-            
+
             var bestAccel = Vector2.zero;
             var maxColTime = 0f;
             
@@ -173,7 +187,7 @@ namespace PacMan.Agent.PathFollowing
                 if (colTime > TimeHorizon)
                 {
                     // If perfectly safe, optionally draw line to the furthest tracked threat (if any exist)
-                    if (_debug && obsIndex != -1 && obsIndex != -2)
+                    if (DebugManager.Instance != null && DebugManager.Instance.vO && obsIndex != -1 && obsIndex != -2)
                     {
                         var threat = obstacleList[obsIndex];
                         var threatPos3D = new Vector3(threat.Position.x, myTransform.position.y, threat.Position.y);
@@ -201,7 +215,7 @@ namespace PacMan.Agent.PathFollowing
             }
             
             // Draw the debug line for the best fallback candidate we are forced to use
-            if (_debug)
+            if (DebugManager.Instance != null && DebugManager.Instance.vO)
             {
                 if (mostThreateningObstacleIndex != -1)
                 {
@@ -230,18 +244,29 @@ namespace PacMan.Agent.PathFollowing
         }
         
         
-        private VehicleState ConvertDroneToState(GameObject drone)
+        private VehicleState ConvertDroneToState(GameObject drone, bool highRisk)
         {
-            var droneVel = drone.GetComponent<Rigidbody>().linearVelocity;
-                
+            Vector3 droneVel;
+            if (drone.GetComponent<Rigidbody>() != null)
+            {
+                droneVel = drone.GetComponent<Rigidbody>().linearVelocity;
+            }
+            else
+            {
+                droneVel = Vector3.zero;
+            }
+            
             var dronePos = new Vector2(drone.transform.position.x, drone.transform.position.z);
             
+            var radiusPadding = highRisk ? OpponentRadiusPadding : AgentRadiusPadding;
+            
+            var radius = drone.GetComponent<Collider>().bounds.extents.z;
             return new VehicleState
             {
                 Position = dronePos,
                 Velocity = new Vector2(droneVel.x, droneVel.z), 
                 Forward = new Vector2(droneVel.x, droneVel.z).normalized, 
-                Radius = _vehicleRadius + OpponentRadiusPadding - AgentRadiusPadding
+                Radius = radius + radiusPadding
             };
         }
         
@@ -410,8 +435,8 @@ namespace PacMan.Agent.PathFollowing
         }
         
         
-        private void VisualizeAgentAndObstacles(Transform myTransform, Vector3 currentVelocity, 
-            float intendedH, float intendedV, GameObject[] otherDrones)
+        private void VisualizeAgent(Transform myTransform, Vector3 currentVelocity, 
+            float intendedH, float intendedV)
         {
             // Green line: Current Velocity
             Debug.DrawRay(myTransform.position, currentVelocity, Color.green);
@@ -422,13 +447,6 @@ namespace PacMan.Agent.PathFollowing
             
             // Draw this vehicle radius
             DrawDebugCircle(myTransform.position, _vehicleRadius, Color.cyan);
-
-            // Draw opponents
-            foreach (var otherDrone in otherDrones)
-            {
-                DrawDebugCircle(otherDrone.transform.position, 
-                    _vehicleRadius + OpponentRadiusPadding - AgentRadiusPadding, Color.red);
-            }
         }
         
         

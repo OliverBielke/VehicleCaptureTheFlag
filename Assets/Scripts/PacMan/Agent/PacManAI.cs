@@ -5,6 +5,7 @@ using PacMan.Local;
 using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
 using PacMan.Agent.BehaviorTreeFolder;
+using PacMan.Agent.Debugging;
 using PacMan.Agent.Map;
 using TMPro;
 using UnityEngine;
@@ -334,18 +335,24 @@ namespace PacMan.Agent
                 var intendedH = dir.x;
                 var intendedV = dir.z;
                 
-                var vo = new VO(transform, maxAcceleration:15f, false);
+                var vo = new VO(transform, maxAcceleration:15f);
 
                 float x;
                 float z;
 
-                // Select the GameObject from each manager and convert the result to an array
-                var otherDrones = visibleEnemies.Select(agent => agent.gameObject).ToArray();
+                // Friends + power pill
+                var lowRiskObstacles = _agent.GetFriendlyAgents().Where(a => a != _agent) // Exclude self
+                    .Select(agent => agent.gameObject)
+                    .ToList();
+                var powerPills = _agent.GetCapsuleObjects();
+                lowRiskObstacles.AddRange(powerPills);
                 var obstacles = Physics.OverlapSphere(transform.position, 20f, LayerMask.GetMask("Obstacle"));
-
+            
+                var enemyGhosts = _agent.GetVisibleEnemyAgents().Where(a => a.IsGhost())
+                    .Select(e => e.gameObject).ToList();
                 
                 (x, z) = vo.GetSafeAcceleration(myTransform: transform, currentVelocity: velocity, 
-                    intendedH:intendedH, intendedV:intendedV, otherDrones:otherDrones, 
+                    intendedH:intendedH, intendedV:intendedV, highRiskDrones:enemyGhosts, lowRiskDrones:lowRiskObstacles,
                     staticObstacles:obstacles);
                 
                 return new Vector2(x, z);
@@ -541,7 +548,7 @@ namespace PacMan.Agent
                 }
             }
 
-            bool ghostNearby = closestGhost != null && closestGhostDist < 8f;
+            bool ghostNearby = closestGhost != null && closestGhostDist < 4f;
             bool carryingFood = _agent.GetCarriedFoodCount() >= 1;
 
             bb.shouldReturnHome = ghostNearby && carryingFood;
@@ -698,8 +705,43 @@ namespace PacMan.Agent
             }
 
             _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
-            return new Vector2(_droneControlling.h, _droneControlling.v);
+
+            var moveVector = GetSafeAcceleration();
+                
+            return moveVector;
         }
+
+
+        /// <summary>
+        /// Returns a safe acceleration based on the _droneControlling output, surrounding obstacles and
+        /// other things based on if the agent is ghost or pacman. 
+        /// </summary>
+        /// <returns></returns>
+        private Vector2 GetSafeAcceleration()
+        {
+            var vo = new VO(transform, maxAcceleration:15f);
+            
+            // Friends + power pill
+            var lowRiskObstacles = _agent.GetFriendlyAgents().Where(a => a != _agent) // Exclude self
+                .Select(agent => agent.gameObject)
+                .ToList();
+            var powerPills = _agent.GetCapsuleObjects();
+            lowRiskObstacles.AddRange(powerPills);
+            var obstacles = Physics.OverlapSphere(transform.position, 20f, LayerMask.GetMask("Obstacle"));
+            
+            var enemyGhosts = _agent.GetVisibleEnemyAgents().Where(a => a.IsGhost())
+                .Select(e => e.gameObject).ToList();
+            
+            float safeH;
+            float safeV;
+            (safeH,safeV) = vo.GetSafeAcceleration(myTransform:transform, currentVelocity:_agent.GetVelocity(), 
+                intendedH:_droneControlling.h, intendedV:_droneControlling.v,highRiskDrones:enemyGhosts, 
+                lowRiskDrones:lowRiskObstacles, staticObstacles:obstacles);
+            
+            return new Vector2(safeH, safeV);
+        }
+        
+        
         private Vector2 ExecuteInterceptIntruder(BTDecision decision)
         {
             if (decision == null || !decision.HasTarget)

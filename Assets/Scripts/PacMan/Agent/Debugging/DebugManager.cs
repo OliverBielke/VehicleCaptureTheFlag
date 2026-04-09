@@ -1,5 +1,6 @@
 using UnityEngine;
 using Scripts.Map;
+using UnityEngine.Serialization;
 
 
 namespace PacMan.Agent.Debugging
@@ -15,6 +16,9 @@ namespace PacMan.Agent.Debugging
         
         [Tooltip("Show Pathfinding Planner steps")]
         public bool aStar;
+
+        [FormerlySerializedAs("vo")] [Tooltip("Show the Velocity Obstacle Debugger")]
+        public bool vO;
 
         private void Awake()
         {
