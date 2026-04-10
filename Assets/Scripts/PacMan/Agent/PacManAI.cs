@@ -11,7 +11,7 @@ using UnityEngine;
 using Scripts.Map;
 using PacMan.Agent.EnemyLocalization;
 using PacMan.Agent.RoleAssignment;
-using System.Diagnostics;
+using PacMan.Agent.Debugging;
 
 namespace PacMan.Agent
 {        
@@ -43,8 +43,6 @@ namespace PacMan.Agent
         [SerializeField] private bool _hasDefenseAnchor = false;
         private MapMiddleAnalyzer _middleAnalyzer;
         private MapMiddleAnalyzer.MiddleInfo _middleInfo;
-        [SerializeField] private bool drawMiddle = true;
-        [SerializeField] private bool drawAstar = true;
         private AgentMode _currentMode;
         private AgentMode _previousMode;
         private bool _visualizerLinked = false;
@@ -906,7 +904,7 @@ namespace PacMan.Agent
         private void OnDrawGizmos()
         {
             MapEditing.DrawObstacleMap(transform, _obstacleMap, drawObstacleMap);
-            if (drawAstar)
+            if (DebugManager.Instance != null && DebugManager.Instance.path)
             {
                 if (_waypoints != null && _waypoints.Count > 0)
                 {
@@ -922,21 +920,21 @@ namespace PacMan.Agent
                     Vector3 lastPos = new Vector3(_waypoints[_waypoints.Count - 1].position.x, transform.position.y, _waypoints[_waypoints.Count - 1].position.y);
                     Gizmos.DrawSphere(lastPos, 0.15f);
                 }
+                
+                if (_droneControlling != null && _initialDroneState != null)
+                {
+                    Gizmos.color = Color.yellow;
+                    Gizmos.DrawSphere(
+                        new Vector3(_droneControlling.closestPoint.x, _initialDroneState.position.y,
+                            _droneControlling.closestPoint.y), 0.2f);
+                    Gizmos.color = Color.blue;
+                    Gizmos.DrawSphere(
+                        new Vector3(_droneControlling.targetPoint.x, _initialDroneState.position.y,
+                            _droneControlling.targetPoint.y), 0.2f);
+                }
             }
 
-            if (_droneControlling != null && _initialDroneState != null)
-            {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawSphere(
-                    new Vector3(_droneControlling.closestPoint.x, _initialDroneState.position.y,
-                        _droneControlling.closestPoint.y), 0.2f);
-                Gizmos.color = Color.blue;
-                Gizmos.DrawSphere(
-                    new Vector3(_droneControlling.targetPoint.x, _initialDroneState.position.y,
-                        _droneControlling.targetPoint.y), 0.2f);
-            }
-
-            if (drawMiddle)
+            if (DebugManager.Instance != null && DebugManager.Instance.middle)
             {
                 DrawMiddleGizmos();
             }

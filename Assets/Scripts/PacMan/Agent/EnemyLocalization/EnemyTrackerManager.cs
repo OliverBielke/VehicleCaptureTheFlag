@@ -4,6 +4,7 @@ using UnityEngine;
 using PacMan.Local;
 using PacMan.Interface.PacMan;
 using Scripts.Map;
+using PacMan.Agent.Debugging;
 
 namespace PacMan.Agent.EnemyLocalization
 {
@@ -39,7 +40,6 @@ namespace PacMan.Agent.EnemyLocalization
         [SerializeField] private bool autoFindTrackingSource = true;
 
         [Header("Debug")]
-        [SerializeField] private bool drawDebug = true;
         [SerializeField] private float particleRadius = 0.05f;
         [SerializeField] private float estimateRadius = 0.2f;
         [SerializeField] private bool logTrackingSource = false;
@@ -447,7 +447,7 @@ namespace PacMan.Agent.EnemyLocalization
 
         private void OnDrawGizmos()
         {
-            if (!drawDebug)
+            if (DebugManager.Instance == null || !DebugManager.Instance.enemyLocalization)
                 return;
 
             Gizmos.color = Color.white;

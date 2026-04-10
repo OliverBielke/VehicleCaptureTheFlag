@@ -35,8 +35,8 @@ namespace PacMan.Agent.PathFinding
             startCell = FindNearestFreeCell(startCell);
 
             // Get true world positions for precise debug drawing
-            Vector3 startWorld = _obstacleMap.CellToWorld(new Vector3Int(startCell.x, 0, startCell.y));
-            Vector3 goalWorld = _obstacleMap.CellToWorld(new Vector3Int(goalCell.x, 0, goalCell.y));
+            var startWorld = _obstacleMap.CellToWorld(new Vector3Int(startCell.x, 0, startCell.y));
+            var goalWorld = _obstacleMap.CellToWorld(new Vector3Int(goalCell.x, 0, goalCell.y));
 
             // Mark the start and goal positions with an X
             if (DebugManager.Instance != null && DebugManager.Instance.aStar)

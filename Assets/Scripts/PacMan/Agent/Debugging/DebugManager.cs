@@ -13,12 +13,21 @@ namespace PacMan.Agent.Debugging
         [Header("PacMan Debugging")]
         [Tooltip("Show the generated Obstacle Grid Map")]
         public bool obstacleMap;
+
+        [Tooltip("Show the Division of the Middle")]
+        public bool middle;
         
         [Tooltip("Show Pathfinding Planner steps")]
         public bool aStar;
 
-        [FormerlySerializedAs("vo")] [Tooltip("Show the Velocity Obstacle Debugger")]
+        [Tooltip("Show the Current Path")]
+        public bool path;
+
+        [Tooltip("Show the Velocity Obstacle Debugger")]
         public bool vO;
+
+        [Tooltip("Show the Enemy Localization Debugger")]
+        public bool enemyLocalization;
 
         private void Awake()
         {
