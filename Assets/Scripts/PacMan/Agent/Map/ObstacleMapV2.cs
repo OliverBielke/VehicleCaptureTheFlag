@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using UnityEngine;
 
 namespace Scripts.Map
@@ -12,8 +10,6 @@ namespace Scripts.Map
         public static ObstacleMapV2 Instance { get; private set; }
         
         private List<GameObject> obstacles;
-
-        public Vector3 margin = Vector3.one;
 
         public Dictionary<Vector2Int, Traversability> traversabilityPerCell;
         public Dictionary<Vector2Int, List<GameObject>> gameGameObjectsPerCell;
@@ -32,16 +28,15 @@ namespace Scripts.Map
 
         public static ObstacleMapV2 Initialize(MapManager map, List<GameObject> additionalObjects, Vector3 cellScale)
         {
-            return Initialize(map, additionalObjects, cellScale, Vector3.one, 0);
+            return Initialize(map, additionalObjects, cellScale, 0);
         }
 
-        public static ObstacleMapV2 Initialize(MapManager map, List<GameObject> additionalObjects, Vector3 cellScale, Vector3 margin, int inflationRadiusCells = 0)
+        public static ObstacleMapV2 Initialize(MapManager map, List<GameObject> additionalObjects, Vector3 cellScale, int inflationRadiusCells = 0)
         {
             var obstacleObjects = map.GetObstacleObjects();
             obstacleObjects.AddRange(additionalObjects);
 
             var obstacleMap = new ObstacleMapV2(map, obstacleObjects, cellScale);
-            obstacleMap.margin = margin;
             obstacleMap.inflationRadiusCells = inflationRadiusCells;
             obstacleMap.GenerateMap();
             
@@ -247,6 +242,8 @@ namespace Scripts.Map
                 traversabilityData[cell] = Traversability.Blocked;
             }
         }
+        
+        
         public enum Traversability
         {
             Free = 0,

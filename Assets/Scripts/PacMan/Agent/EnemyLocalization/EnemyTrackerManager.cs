@@ -43,7 +43,6 @@ namespace PacMan.Agent.EnemyLocalization
         [SerializeField] private float particleRadius = 0.05f;
         [SerializeField] private float estimateRadius = 0.2f;
         [SerializeField] private bool logTrackingSource = false;
-        [SerializeField] private MapManager mapManager;
 
         private ObstacleMapV2 _obstacleMap;
         private readonly Dictionary<int, ParticleFilter> _enemyFilters = new Dictionary<int, ParticleFilter>();
@@ -105,31 +104,16 @@ namespace PacMan.Agent.EnemyLocalization
 
             _pfBounds = new Bounds(boundsCenter, boundsSize);
 
-            if (mapManager == null)
-            {
-                mapManager = FindFirstObjectByType<MapManager>();
-            }
-
-            if (mapManager != null)
-            {
-                _obstacleMap = ObstacleMapV2.Initialize(
-                    mapManager,
-                    new List<GameObject>(),
-                    new Vector3(0.2f, 1f, 0.2f),
-                    new Vector3(1f, 1f, 1f),
-                    0
-                );
-
-                _isTraversable = IsTraversable;
-            }
-            else
-            {
-                _isTraversable = null;
-            }
-
             _enemyFilters.Clear();
             _trackStates.Clear();
             _initialized = true;
+        }
+        
+        // Used in PacManAI to set the same Obstacle Map for all classes
+        public void SetObstacleMap(ObstacleMapV2 map)
+        {
+            _obstacleMap = map;
+            _isTraversable = IsTraversable;
         }
 
         private void RefreshTrackingSource()

@@ -5,14 +5,13 @@ using PacMan.Local;
 using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
 using PacMan.Agent.BehaviorTreeFolder;
-using PacMan.Agent.Debugging;
 using PacMan.Agent.Map;
 using TMPro;
 using UnityEngine;
 using Scripts.Map;
 using PacMan.Agent.EnemyLocalization;
-using System.Reflection;
 using PacMan.Agent.RoleAssignment;
+using System.Diagnostics;
 
 namespace PacMan.Agent
 {        
@@ -61,7 +60,7 @@ namespace PacMan.Agent
         public void SetAssignedRole(StaticRole role)
         {
             _assignedRole = role;
-            Debug.Log($"{name} assigned role: {_assignedRole}");
+            UnityEngine.Debug.Log($"{name} assigned role: {_assignedRole}");
         }
 
         public void SetDefenseAnchor(Vector3 anchor)
@@ -79,7 +78,13 @@ namespace PacMan.Agent
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
             var gridSize = 0.2f;
-            _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize), new Vector3(1f, 1f, 1f));
+            _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize));
+            
+            //Make all the classes have the same obstacle map
+            if (EnemyTrackerManager.Instance != null) EnemyTrackerManager.Instance.SetObstacleMap(_obstacleMap);
+            if (RoleAssigner.Instance != null) RoleAssigner.Instance.SetObstacleMap(_obstacleMap);
+            
+            
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
             _defenderTree = DefenderTreeFactory.Create();
@@ -98,7 +103,6 @@ namespace PacMan.Agent
             
             // Set the initial respawn step
             if (_agent != null) _previousRespawnStep = _agent.GetLastRespawnStep();
-            
         }
 
         public override PacManAction Tick()
@@ -458,7 +462,7 @@ namespace PacMan.Agent
 
             if (aStarPath == null || aStarPath.Count < 2)
             {
-                Debug.LogWarning("MakePath failed: no valid A* path.");
+                UnityEngine.Debug.LogWarning("MakePath failed: no valid A* path.");
                 _waypoints = null;
                 _droneControlling = null;
                 return false;
@@ -472,7 +476,7 @@ namespace PacMan.Agent
 
             if (nodes.Count < 2)
             {
-                Debug.LogWarning("MakePath failed: not enough nodes.");
+                UnityEngine.Debug.LogWarning("MakePath failed: not enough nodes.");
                 _waypoints = null;
                 _droneControlling = null;
                 return false;

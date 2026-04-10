@@ -11,10 +11,7 @@ namespace PacMan.Agent.RoleAssignment
     public class RoleAssigner : MonoBehaviour
     {
         public static RoleAssigner Instance { get; private set; }
-
-        [Header("Scene References")]
-        [SerializeField] private MapManager mapManager;
-
+        
         [Header("Map Analysis")]
         [SerializeField] private float gridSize = 0.2f;
         [SerializeField] private bool useMajorLanesOnlyForDefense = true;
@@ -40,28 +37,17 @@ namespace PacMan.Agent.RoleAssignment
 
             Instance = this;
         }
-
-        private void Start()
+        
+        // Used in PacManAI to set the same Obstacle Map for all classes
+        public void SetObstacleMap(ObstacleMapV2 map)
         {
-            if (mapManager == null)
-            {
-                mapManager = FindObjectOfType<MapManager>();
-            }
-
-            if (mapManager == null)
-            {
-                Debug.LogError("RoleAssigner: MapManager not found.");
-                enabled = false;
+            // Ensure we only initialize this once, as multiple agents will try to inject it
+            if (_obstacleMap != null) 
                 return;
-            }
 
-            _obstacleMap = ObstacleMapV2.Initialize(
-                mapManager,
-                new List<GameObject>(),
-                new Vector3(gridSize, 1f, gridSize),
-                new Vector3(1f, 1f, 1f)
-            );
+            _obstacleMap = map;
 
+            // Generate the middle info now that we have the map
             _middleAnalyzer = new MapMiddleAnalyzer(_obstacleMap);
             _middleInfo = _middleAnalyzer.Analyze();
 
