@@ -11,10 +11,21 @@ namespace PacMan.Agent.PathFinding
     {
         private readonly ObstacleMapV2 _obstacleMap;
         private readonly List<Vector3> _astarExploredNodes = new();
+        private readonly HashSet<Vector2Int> _dynamicBlockedCells;
         
-        public Astar(ObstacleMapV2 obstacleMap)
+        public Astar(ObstacleMapV2 obstacleMap, IEnumerable<Vector3> dynamicBlockedPositions = null)
         {
             _obstacleMap = obstacleMap;
+            _dynamicBlockedCells = new HashSet<Vector2Int>();
+
+            if (dynamicBlockedPositions == null || _obstacleMap == null)
+                return;
+
+            foreach (var position in dynamicBlockedPositions)
+            {
+                var cell = ToCellKey(position);
+                _dynamicBlockedCells.Add(cell);
+            }
         }
 
         /// <summary>
@@ -287,7 +298,18 @@ namespace PacMan.Agent.PathFinding
             if (_obstacleMap == null)
                 return false;
 
+            if (_dynamicBlockedCells.Contains(ToCellKey(position)))
+                return false;
+
             return _obstacleMap.GetLocalPointTraversibility(position) == ObstacleMapV2.Traversability.Free;
+        }
+
+        private Vector2Int ToCellKey(Vector3 localPosition)
+        {
+            var cellPos = Vector3Int.FloorToInt(Vector3.Scale(
+                localPosition,
+                new Vector3(1 / _obstacleMap.trueScale.x, 1 / _obstacleMap.trueScale.y, 1 / _obstacleMap.trueScale.z)));
+            return new Vector2Int(cellPos.x, cellPos.z);
         }
 
         /// <summary>
