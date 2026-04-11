@@ -11,6 +11,7 @@ namespace PacMan.Agent.PathFinding
     {
         private readonly ObstacleMapV2 _obstacleMap;
         private readonly List<Vector2Int> _astarExploredNodes = new();
+        private Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
         
         public Astar(ObstacleMapV2 obstacleMap)
         {
@@ -23,8 +24,11 @@ namespace PacMan.Agent.PathFinding
         /// <param name="start">Start position. </param>
         /// <param name="goal">Goal position. </param>
         /// <returns>The planned path. </returns>
-        public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal)
+        public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal, 
+            Dictionary<Vector2Int, VoronoiCellData> voronoiMap = null)
         {
+            _voronoiMap = voronoiMap;
+            
             // Convert world positions to map grid cells
             var startCell3D = _obstacleMap.WorldToCell(start);
             var goalCell3D = _obstacleMap.WorldToCell(goal);
@@ -63,7 +67,8 @@ namespace PacMan.Agent.PathFinding
             HashSet<Vector2Int> closedSet = new();
 
             // Pass the map instance so the node can check precomputed distances
-            var startNode = new AStarNode(pos: startCell, goal: goalCell, obstacleMap: _obstacleMap);
+            var startNode = new AStarNode(pos: startCell, goal: goalCell, obstacleMap: _obstacleMap, 
+                voronoiMap: _voronoiMap, parent: null);
             openSet.Add(startNode);
             
             const int maxIterations = 50000;
@@ -104,7 +109,8 @@ namespace PacMan.Agent.PathFinding
                     
                     if (neighborNode == null)
                     {
-                        neighborNode = new AStarNode(pos: neighborPos, goal: goalCell, obstacleMap: _obstacleMap, parent: currentNode);
+                        neighborNode = new AStarNode(pos: neighborPos, goal: goalCell, obstacleMap: _obstacleMap, 
+                            voronoiMap:_voronoiMap, parent: currentNode);
                         openSet.Add(neighborNode);
                         
                         if (DebugManager.Instance != null && DebugManager.Instance.aStar)
@@ -144,12 +150,15 @@ namespace PacMan.Agent.PathFinding
             public AStarNode Parent;
             public readonly Vector2Int Position;
             private readonly ObstacleMapV2 _obstacleMap;
+            private readonly Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
 
-            public AStarNode(Vector2Int pos, Vector2Int goal, ObstacleMapV2 obstacleMap, AStarNode parent=null)
+            public AStarNode(Vector2Int pos, Vector2Int goal, ObstacleMapV2 obstacleMap, 
+                Dictionary<Vector2Int, VoronoiCellData> voronoiMap, AStarNode parent=null)
             {
                 Position = pos;
                 Parent = parent;
                 _obstacleMap = obstacleMap;
+                _voronoiMap = voronoiMap;
 
                 GCost = CostToCome(parent: parent);
                 _hCost = Heuristic(goal: goal);
@@ -171,12 +180,23 @@ namespace PacMan.Agent.PathFinding
             public float CostToCome(AStarNode parent)
             {
                 if (parent == null) return 0f;
-        
+                
                 // Calculate true step cost mimicking the precomputation step
                 Vector3 parentWorld = _obstacleMap.CellToWorld(new Vector3Int(parent.Position.x, 0, parent.Position.y));
                 Vector3 currentWorld = _obstacleMap.CellToWorld(new Vector3Int(Position.x, 0, Position.y));
-        
-                return parent.GCost + Vector3.Distance(parentWorld, currentWorld);
+
+                var multiplier = 1f;
+                const float voronoiPenaltyMultiplier = 100f;
+                if (_voronoiMap != null && _voronoiMap.TryGetValue(Position, out var cellData))
+                {
+                    //If being able to be caught by the opponent
+                    if (!cellData.IsSafe)
+                    {
+                        multiplier = voronoiPenaltyMultiplier; 
+                    }
+                }
+                
+                return parent.GCost + multiplier * Vector3.Distance(parentWorld, currentWorld);
             }
 
             public void SwitchParent(AStarNode newParent)
@@ -186,22 +206,6 @@ namespace PacMan.Agent.PathFinding
             }
     
             public float FCost => GCost + _hCost;
-        }
-        
-        
-        /// <summary>
-        /// Rounds a position to the nearest grid point based on the specified grid size. This helps to discretize the search space for A*.
-        /// </summary>
-        /// <param name="pos">The position we want to round. </param>
-        /// <param name="gridSize">The grid size. </param>
-        /// <returns>The rounded position. </returns>
-        private static Vector3 RoundToGrid(Vector3 pos, float gridSize)
-        {
-            return new Vector3(
-                Mathf.Round(pos.x / gridSize) * gridSize,
-                pos.y,
-                Mathf.Round(pos.z / gridSize) * gridSize
-            );
         }
         
         
