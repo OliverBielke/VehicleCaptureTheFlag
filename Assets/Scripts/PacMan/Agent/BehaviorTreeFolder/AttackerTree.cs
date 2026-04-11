@@ -5,11 +5,16 @@ namespace PacMan.Agent.BehaviorTreeFolder
     [System.Serializable]
     public class AttackerBlackboard
     {
+        public bool shouldGrabPowerCapsule;
+        public bool shouldCampNextPowerCapsule;
+        public bool shouldLootWhilePowered;
         public bool shouldReturnHome;
         public bool safeEnemyPillsAvailable;
         public bool safeMiddlePillsAvailable;
         public bool outsideAttackZone;
 
+        public Vector3 powerCapsuleTargetPosition;
+        public Vector3 powerCapsuleCampPosition;
         public Vector3 homeTargetPosition;
         public Vector3 enemyPillTargetPosition;
         public Vector3 middlePillTargetPosition;
@@ -28,6 +33,46 @@ namespace PacMan.Agent.BehaviorTreeFolder
                     "Attacker Selector",
                     new System.Collections.Generic.List<BTNode<AttackerBlackboard>>
                     {
+                        new SequenceNode<AttackerBlackboard>(
+                            "Grab Power Capsule Sequence",
+                            new System.Collections.Generic.List<BTNode<AttackerBlackboard>>
+                            {
+                                new ConditionNode<AttackerBlackboard>(
+                                    "shouldGrabPowerCapsule",
+                                    bb => bb.shouldGrabPowerCapsule
+                                ),
+                                new ActionNode<AttackerBlackboard>(
+                                    "GrabPowerCapsule",
+                                    bb => BTDecision.Running(
+                                        AgentMode.Attack,
+                                        "GrabPowerCapsule",
+                                        hasTarget: true,
+                                        targetPosition: bb.powerCapsuleTargetPosition
+                                    )
+                                )
+                            }
+                        ),
+
+                        new SequenceNode<AttackerBlackboard>(
+                            "Camp Next Power Capsule Sequence",
+                            new System.Collections.Generic.List<BTNode<AttackerBlackboard>>
+                            {
+                                new ConditionNode<AttackerBlackboard>(
+                                    "shouldCampNextPowerCapsule",
+                                    bb => bb.shouldCampNextPowerCapsule
+                                ),
+                                new ActionNode<AttackerBlackboard>(
+                                    "CampNextPowerCapsule",
+                                    bb => BTDecision.Running(
+                                        AgentMode.Attack,
+                                        "CampNextPowerCapsule",
+                                        hasTarget: true,
+                                        targetPosition: bb.powerCapsuleCampPosition
+                                    )
+                                )
+                            }
+                        ),
+
                         new SequenceNode<AttackerBlackboard>(
                             "Return Home Sequence",
                             new System.Collections.Generic.List<BTNode<AttackerBlackboard>>
@@ -53,8 +98,8 @@ namespace PacMan.Agent.BehaviorTreeFolder
                             new System.Collections.Generic.List<BTNode<AttackerBlackboard>>
                             {
                                 new ConditionNode<AttackerBlackboard>(
-                                    "safeEnemyPillsAvailable",
-                                    bb => bb.safeEnemyPillsAvailable
+                                    "canCollectEnemyPills",
+                                    bb => bb.shouldLootWhilePowered || bb.safeEnemyPillsAvailable
                                 ),
                                 new ActionNode<AttackerBlackboard>(
                                     "CollectEnemyPills",

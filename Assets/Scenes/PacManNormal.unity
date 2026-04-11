@@ -46936,6 +46936,11 @@ PrefabInstance:
       propertyPath: m_LocalPosition.z
       value: 2.09
       objectReference: {fileID: 0}
+    - target: {fileID: 3403414422347947438, guid: 1d86bfcc61af61f4c8bfb03ac63a295c,
+        type: 3}
+      propertyPath: teamName
+      value: '#1'
+      objectReference: {fileID: 0}
     - target: {fileID: 4594948241594532799, guid: 1d86bfcc61af61f4c8bfb03ac63a295c,
         type: 3}
       propertyPath: fileName
@@ -64833,7 +64838,7 @@ MonoBehaviour:
   matchLength: 240
   finished: 0
   agentsPerTeam: 0
-  teamName: 
+  teamName: '#1'
   agents: []
   redAgents: []
   blueAgents: []

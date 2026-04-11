@@ -128,6 +128,11 @@ MonoBehaviour:
   attackPatrolSwitchSteps: 30
   attackPatrolOffset: 1
   attackPatrolArriveDistance: 0.15
+  lateGameCapsuleRushSeconds: 45
+  poweredReturnFoodThreshold: 6
+  minStepsBetweenRepaths: 12
+  retargetDistanceThreshold: 0.75
+  targetLockDistance: 0.35
 --- !u!114 &6052309846596243798
 MonoBehaviour:
   m_ObjectHideFlags: 0

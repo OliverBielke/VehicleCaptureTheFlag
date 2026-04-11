@@ -12,11 +12,16 @@ namespace PacMan.Agent.PathFinding
         private readonly ObstacleMapV2 _obstacleMap;
         private readonly List<Vector3> _astarExploredNodes = new();
         private readonly HashSet<Vector2Int> _dynamicBlockedCells;
+        private readonly System.Func<Vector3, bool> _additionalTraversability;
         
-        public Astar(ObstacleMapV2 obstacleMap, IEnumerable<Vector3> dynamicBlockedPositions = null)
+        public Astar(
+            ObstacleMapV2 obstacleMap,
+            IEnumerable<Vector3> dynamicBlockedPositions = null,
+            System.Func<Vector3, bool> additionalTraversability = null)
         {
             _obstacleMap = obstacleMap;
             _dynamicBlockedCells = new HashSet<Vector2Int>();
+            _additionalTraversability = additionalTraversability;
 
             if (dynamicBlockedPositions == null || _obstacleMap == null)
                 return;
@@ -299,6 +304,9 @@ namespace PacMan.Agent.PathFinding
                 return false;
 
             if (_dynamicBlockedCells.Contains(ToCellKey(position)))
+                return false;
+
+            if (_additionalTraversability != null && !_additionalTraversability(position))
                 return false;
 
             return _obstacleMap.GetLocalPointTraversibility(position) == ObstacleMapV2.Traversability.Free;

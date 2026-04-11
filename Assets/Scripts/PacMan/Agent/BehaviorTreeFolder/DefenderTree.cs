@@ -5,11 +5,17 @@ namespace PacMan.Agent.BehaviorTreeFolder
     [System.Serializable]
     public class DefenderBlackboard
     {
+        public bool shouldGrabPowerCapsule;
+        public bool shouldLootWhilePowered;
+        public bool shouldReturnHome;
         public bool enemyPacmanIntruderSuspected;
         public bool enemyLikelyCrossingMyLane;
         public bool safeMiddlePillsAvailable;
         public bool outsideDefensiveZone;
 
+        public Vector3 powerCapsuleTargetPosition;
+        public Vector3 homeTargetPosition;
+        public Vector3 enemyPillTargetPosition;
         public Vector3 suspectedIntruderPosition;
         public Vector3 predictedCrossingPoint;
         public Vector3 safeMiddlePillPosition;
@@ -28,6 +34,66 @@ namespace PacMan.Agent.BehaviorTreeFolder
                     "Defender Selector",
                     new System.Collections.Generic.List<BTNode<DefenderBlackboard>>
                     {
+                        new SequenceNode<DefenderBlackboard>(
+                            "Grab Power Capsule Sequence",
+                            new System.Collections.Generic.List<BTNode<DefenderBlackboard>>
+                            {
+                                new ConditionNode<DefenderBlackboard>(
+                                    "shouldGrabPowerCapsule",
+                                    bb => bb.shouldGrabPowerCapsule
+                                ),
+                                new ActionNode<DefenderBlackboard>(
+                                    "GrabPowerCapsule",
+                                    bb => BTDecision.Running(
+                                        AgentMode.Attack,
+                                        "GrabPowerCapsule",
+                                        hasTarget: true,
+                                        targetPosition: bb.powerCapsuleTargetPosition
+                                    )
+                                )
+                            }
+                        ),
+
+                        new SequenceNode<DefenderBlackboard>(
+                            "Return Home Sequence",
+                            new System.Collections.Generic.List<BTNode<DefenderBlackboard>>
+                            {
+                                new ConditionNode<DefenderBlackboard>(
+                                    "shouldReturnHome",
+                                    bb => bb.shouldReturnHome
+                                ),
+                                new ActionNode<DefenderBlackboard>(
+                                    "ReturnHome",
+                                    bb => BTDecision.Running(
+                                        AgentMode.ReturnHome,
+                                        "ReturnHome",
+                                        hasTarget: true,
+                                        targetPosition: bb.homeTargetPosition
+                                    )
+                                )
+                            }
+                        ),
+
+                        new SequenceNode<DefenderBlackboard>(
+                            "Loot While Powered Sequence",
+                            new System.Collections.Generic.List<BTNode<DefenderBlackboard>>
+                            {
+                                new ConditionNode<DefenderBlackboard>(
+                                    "shouldLootWhilePowered",
+                                    bb => bb.shouldLootWhilePowered
+                                ),
+                                new ActionNode<DefenderBlackboard>(
+                                    "CollectEnemyPills",
+                                    bb => BTDecision.Running(
+                                        AgentMode.Attack,
+                                        "CollectEnemyPills",
+                                        hasTarget: true,
+                                        targetPosition: bb.enemyPillTargetPosition
+                                    )
+                                )
+                            }
+                        ),
+
                         new SequenceNode<DefenderBlackboard>(
                             "Intercept Intruder Sequence",
                             new System.Collections.Generic.List<BTNode<DefenderBlackboard>>
