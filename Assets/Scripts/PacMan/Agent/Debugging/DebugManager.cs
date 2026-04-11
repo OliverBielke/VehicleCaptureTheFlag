@@ -17,6 +17,9 @@ namespace PacMan.Agent.Debugging
         [Tooltip("Show the Division of the Middle")]
         public bool middle;
         
+        [Tooltip("Show the Voronoi Partitioning")]
+        public bool voronoi;
+        
         [Tooltip("Show Pathfinding Planner steps")]
         public bool aStar;
 

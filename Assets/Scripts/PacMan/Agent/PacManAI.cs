@@ -47,6 +47,9 @@ namespace PacMan.Agent
         private AgentMode _previousMode;
         private bool _visualizerLinked = false;
         
+        private VoronoiPartitioning _voronoiPartitioning;
+        private Dictionary<Vector2Int, VoronoiCellData> _currentVoronoi;
+        
         // To track respawns
         private int _previousRespawnStep = -1;
 
@@ -101,10 +104,14 @@ namespace PacMan.Agent
             
             // Set the initial respawn step
             if (_agent != null) _previousRespawnStep = _agent.GetLastRespawnStep();
+            
+            _voronoiPartitioning = new VoronoiPartitioning(_obstacleMap);
         }
 
         public override PacManAction Tick()
         {
+            UpdateVoronoiData();
+            
             // Respawn Detection
             var currentRespawnStep = _agent.GetLastRespawnStep();
             if (currentRespawnStep != _previousRespawnStep)
@@ -484,6 +491,34 @@ namespace PacMan.Agent
             _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState);
             return true;
         }
+        
+        
+        private void UpdateVoronoiData()
+        {
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+    
+            if (visibleEnemies == null || visibleEnemies.Count == 0)
+            {
+                _currentVoronoi = null;
+                return;
+            }
+
+            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+            bool isOnOpponentSide = isBlue ? transform.localPosition.x > 0 : transform.localPosition.x < 0; 
+
+            if (isOnOpponentSide)
+            {
+                var enemyPositions = visibleEnemies.Select(e => e.transform.position).ToList();
+        
+                // Pass the agent's position to act as the "Safe" source
+                _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions);
+            }
+            else
+            {
+                _currentVoronoi = null;
+            }
+        }
+        
 
         private DefenderBlackboard BuildDefenderBlackboard()
         {
@@ -937,6 +972,11 @@ namespace PacMan.Agent
             if (DebugManager.Instance != null && DebugManager.Instance.middle)
             {
                 DrawMiddleGizmos();
+            }
+            
+            if (_voronoiPartitioning != null && _currentVoronoi != null)
+            {
+                _voronoiPartitioning.DrawVoronoiDebug(_currentVoronoi);
             }
         }
         private void DrawMiddleGizmos()
