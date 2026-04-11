@@ -110,8 +110,6 @@ namespace PacMan.Agent
 
         public override PacManAction Tick()
         {
-            UpdateVoronoiData();
-            
             // Respawn Detection
             var currentRespawnStep = _agent.GetLastRespawnStep();
             if (currentRespawnStep != _previousRespawnStep)
@@ -172,57 +170,7 @@ namespace PacMan.Agent
                     return BTDecision.Running(AgentMode.Patrol, "NoRole");
             }
         }
-        private Vector2 GetAttackAcceleration(List<GameObject> activeFoodPositions)
-        {
-            // 1. VALIDATE EXISTING GOAL
-            if (_hasGoal)
-            {
-                // Condition A: Did we reach the goal?
-                if (Vector3.Distance(transform.localPosition, _goalPosition) < 0.2f)
-                {
-                    _hasGoal = false;
-                }
-                // Condition B: Was our targeted food eaten by someone else?
-                else if (_currentFoodTarget != null && !_currentFoodTarget.activeSelf)
-                {
-                    _hasGoal = false;
-                }
-            }
-            
-            // FIND NEW GOAL IF NEEDED
-            if (!_hasGoal)
-            {
-                var gf = new GoalFinding(agent: _agent);
-                var closestFood = gf.GetClosestEatableFood(activeFoodPositions, debug: true);
-                _goalPosition = closestFood;
-
-                // Map the returned Vector3 back to the actual GameObject so we can track if it gets deactivated
-                _currentFoodTarget = activeFoodPositions.FirstOrDefault(f => f.transform.position == closestFood);
-                
-                bool pathOk = MakePath();
-
-                if (!pathOk)
-                {
-                    _hasGoal = false;
-                    return Vector2.zero;
-                }
-
-                _hasGoal = true;
-            }
-
-            if (_droneControlling == null || _initialDroneState == null)
-            {
-                _hasGoal = false;
-                return Vector2.zero;
-            }
-
-            _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
-
-            var x = _droneControlling.h;
-            var z = _droneControlling.v;
-
-            return new Vector2(x, z);
-        }
+        
 
         private Vector2 GetReturnHomeAcceleration()
         {
@@ -462,6 +410,8 @@ namespace PacMan.Agent
             //     $"hasDefenseAnchor={_hasDefenseAnchor} | defenseAnchor={_defenseAnchor}"
             // );
 
+            UpdateVoronoiData();
+            
             Astar aStar = new Astar(_obstacleMap);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition);
 
