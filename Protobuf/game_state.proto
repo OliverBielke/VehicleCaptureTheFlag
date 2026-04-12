@@ -23,6 +23,7 @@ message GameState {
   float fixed_delta_time = 8;
   int32 steps_since_match_start = 9;
   int32 steps_remaining = 10;
+  optional float match_length = 11;
 }
 
 message ProtoPacManAction {
