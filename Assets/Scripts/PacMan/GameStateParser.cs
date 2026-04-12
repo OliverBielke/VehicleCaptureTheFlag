@@ -249,11 +249,12 @@ namespace PacMan
 
             var storeState = new ProtoGameState
             {
-                Time = gameManager.matchTime,
+                MatchTime = gameManager.matchTime,
                 MapName = mapName ?? string.Empty,
                 FixedDeltaTime = Time.fixedDeltaTime,
                 StepsSinceMatchStart = gameManager.CurrentSimulationStep,
-                StepsRemaining = gameManager.RemainingSimulationSteps
+                StepsRemaining = gameManager.RemainingSimulationSteps,
+                MatchLength = gameManager.matchLength
             };
 
             storeState.Food.Add(gameManager.foodList.Select(food => EdibleFromObject(food)));
@@ -381,22 +382,24 @@ namespace PacMan
         private static void ApplyAuthoritativeSimulationState(PacManGameManager gameManager, ProtoGameState readState)
         {
             var fixedDeltaTime = readState.FixedDeltaTime > 0f ? readState.FixedDeltaTime : Time.fixedDeltaTime;
+            var authoritativeMatchTime = readState.MatchTime;
+            var authoritativeMatchLength = readState.HasMatchLength ? readState.MatchLength : gameManager.matchLength;
 
             var stepsSinceMatchStart = readState.StepsSinceMatchStart;
-            if (stepsSinceMatchStart == 0 && readState.Time > 0f)
+            if (stepsSinceMatchStart == 0 && authoritativeMatchTime > 0f)
             {
-                stepsSinceMatchStart = gameManager.EstimateStepsSinceMatchStart(readState.Time, fixedDeltaTime);
+                stepsSinceMatchStart = gameManager.EstimateStepsSinceMatchStart(authoritativeMatchTime, fixedDeltaTime);
             }
 
             var stepsRemaining = readState.StepsRemaining;
             if (stepsRemaining == 0 &&
-                gameManager.matchLength > 0f &&
-                readState.Time <= gameManager.matchLength)
+                authoritativeMatchLength > 0f &&
+                authoritativeMatchTime <= authoritativeMatchLength)
             {
-                stepsRemaining = gameManager.CalculateStepsRemaining(stepsSinceMatchStart, fixedDeltaTime);
+                stepsRemaining = gameManager.CalculateStepsRemaining(stepsSinceMatchStart, fixedDeltaTime, authoritativeMatchLength);
             }
 
-            gameManager.ApplyAuthoritativeSimulationState(readState.Time, stepsSinceMatchStart, stepsRemaining);
+            gameManager.ApplyAuthoritativeSimulationState(authoritativeMatchTime, stepsSinceMatchStart, stepsRemaining, authoritativeMatchLength);
         }
 
         private static int ResolveServerIndex(ProtoPacManState state, int fallbackServerIndex)
@@ -478,6 +481,18 @@ namespace PacMan
             }
 
             return new Quaternion(quaternion.X, quaternion.Y, quaternion.Z, quaternion.W);
+        }
+    }
+}
+
+namespace PacMan.Network.Generated
+{
+    public sealed partial class GameState
+    {
+        public float MatchTime
+        {
+            get => Time;
+            set => Time = value;
         }
     }
 }
