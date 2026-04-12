@@ -100,8 +100,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1690c612a1b53a54bb78dd8e73a17d93, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  max_speed: 20
-  max_acceleration: 13
+  max_speed: 15
+  max_acceleration: 15
   collisionEnabled: 1
 --- !u!114 &-3328113813598124169
 MonoBehaviour:
@@ -115,6 +115,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fd3a6e6cdc78446d81ab62251cce6700, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  drawObstacleMap: 0
+  debugText: {fileID: 0}
+  allowManualOverride: 1
+  _assignedRole: 0
+  _defenseAnchor: {x: 0, y: 0, z: 0}
+  _hasDefenseAnchor: 0
+  _attackAnchor: {x: 0, y: 0, z: 0}
+  _hasAttackAnchor: 0
+  attackPatrolSwitchSteps: 30
+  attackPatrolOffset: 1
+  attackPatrolArriveDistance: 0.15
 --- !u!114 &6052309846596243798
 MonoBehaviour:
   m_ObjectHideFlags: 0
