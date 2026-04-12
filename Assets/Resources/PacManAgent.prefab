@@ -130,6 +130,14 @@ MonoBehaviour:
   attackPatrolArriveDistance: 0.15
   lateGameCapsuleRushSeconds: 45
   poweredReturnFoodThreshold: 6
+  returnHomeOwnSideOffset: 2
+  returnHomeReleaseOwnSideDistance: 1.2
+  friendlyCapsuleObstacleInflation: 1
+  baseGhostDangerDistance: 2.5
+  maxGhostDangerDistance: 6
+  ghostDangerHysteresisDistance: 1
+  defenderPurePursuitSwitchDistance: 1.5
+  postDepositCooldownSteps: 200
   minStepsBetweenRepaths: 12
   retargetDistanceThreshold: 0.75
   targetLockDistance: 0.35

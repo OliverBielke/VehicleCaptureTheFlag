@@ -65,6 +65,15 @@ namespace PacMan.Agent
         [Header("Power Play")]
         [SerializeField] private float lateGameCapsuleRushSeconds = 45f;
         [SerializeField] private int poweredReturnFoodThreshold = 6;
+        [Header("Retreat")]
+        [SerializeField] private float returnHomeOwnSideOffset = 0.8f;
+        [SerializeField] private float returnHomeReleaseOwnSideDistance = 1.2f;
+        [SerializeField] private float friendlyCapsuleObstacleInflation = 1.0f;
+        [SerializeField] private float baseGhostDangerDistance = 2.5f;
+        [SerializeField] private float maxGhostDangerDistance = 6.0f;
+        [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
+        [SerializeField] private float defenderPurePursuitSwitchDistance = 1.5f;
+        [SerializeField] private int postDepositCooldownSteps = 20;
         [Header("Path Stability")]
         [SerializeField] private int minStepsBetweenRepaths = 12;
         [SerializeField] private float retargetDistanceThreshold = 0.75f;
@@ -74,6 +83,10 @@ namespace PacMan.Agent
         private bool _visualizerLinked = false;
         private int _lastPathPlanStep = -99999;
         private int _lastKnownRespawnStep = -1;
+        private bool _attackerThreatRetreatActive = false;
+        private int _previousCarriedFoodCount = 0;
+        private int _attackerPostDepositCooldownUntilStep = -1;
+        private bool _attackerRegroupAfterReturnHome = false;
 
         private const float AnchorReachedDistance = 0.35f;
 
@@ -147,12 +160,31 @@ namespace PacMan.Agent
             _agent.GetScore();
 
             Vector3 velocity = _agent.GetVelocity();
+            int currentStep = _agent.GetStepsSinceMatchStart();
+            int carriedFoodCount = _agent.GetCarriedFoodCount();
 
             int currentRespawnStep = _agent.GetLastRespawnStep();
             if (_lastKnownRespawnStep != currentRespawnStep)
             {
                 ClearCurrentPath();
                 _lastKnownRespawnStep = currentRespawnStep;
+                _attackerThreatRetreatActive = false;
+                _attackerPostDepositCooldownUntilStep = -1;
+                _previousCarriedFoodCount = carriedFoodCount;
+                _attackerRegroupAfterReturnHome = false;
+            }
+
+            bool justDepositedFood =
+                _assignedRole == StaticRole.Attack &&
+                _previousCarriedFoodCount > 0 &&
+                carriedFoodCount == 0 &&
+                IsInOwnTerritory(transform.localPosition);
+
+            if (justDepositedFood)
+            {
+                _attackerPostDepositCooldownUntilStep = currentStep + Mathf.Max(0, postDepositCooldownSteps);
+                _attackerRegroupAfterReturnHome = true;
+                ClearCurrentPath();
             }
 
             _lastDecision = EvaluateCurrentRoleTree();
@@ -172,6 +204,7 @@ namespace PacMan.Agent
             }
 
             _previousMode = _currentMode;
+            _previousCarriedFoodCount = carriedFoodCount;
 
             return new PacManAction
             {
@@ -477,6 +510,7 @@ namespace PacMan.Agent
             var dynamicEnemyObstacles = GetTrackedEnemies()
                 .Where(enemy => enemy != null && enemy.HasPosition)
                 .Select(enemy => enemy.Position)
+                .Concat(GetInflatedFriendlyCapsuleObstaclePoints())
                 .ToList();
 
             var startTrav = _obstacleMap.GetLocalPointTraversibility(curPos);
@@ -596,30 +630,79 @@ namespace PacMan.Agent
             float timeRemaining = _agent.GetTimeRemaining();
             bool isPowered = _agent.IsPoweredUp();
             int carriedFoodCount = _agent.GetCarriedFoodCount();
+            bool attackerPostDepositCooldownActive = _agent.GetStepsSinceMatchStart() < _attackerPostDepositCooldownUntilStep;
 
-            float closestGhostDist = float.MaxValue;
-            TrackedEnemyInfo closestGhost = null;
+            float closestEnemyDist = float.MaxValue;
+            TrackedEnemyInfo closestEnemy = null;
 
             if (trackedEnemies != null)
             {
                 foreach (var enemy in trackedEnemies)
                 {
-                    if (enemy == null || !enemy.HasPosition || !enemy.IsGhost)
+                    if (enemy == null || !enemy.HasPosition)
                         continue;
 
                     float dist = Vector3.Distance(myPos, enemy.Position);
-                    if (dist < closestGhostDist)
+                    if (dist < closestEnemyDist)
                     {
-                        closestGhostDist = dist;
-                        closestGhost = enemy;
+                        closestEnemyDist = dist;
+                        closestEnemy = enemy;
                     }
                 }
             }
 
-            bool ghostNearby = closestGhost != null && closestGhostDist < 4f;
-            bool carryingFood = carriedFoodCount >= 1;
+            float ghostDangerDistance = Mathf.Lerp(
+                baseGhostDangerDistance,
+                maxGhostDangerDistance,
+                Mathf.Clamp01(carriedFoodCount / 5f));
 
-            bb.shouldReturnHome = !isPowered && ghostNearby && carryingFood;
+            bool carryingFood = carriedFoodCount >= 1;
+            bool deepEnoughInOwnTerritory = IsDeepEnoughInOwnTerritory(myPos, returnHomeReleaseOwnSideDistance);
+            bool ghostInsideEnterRange = closestEnemy != null && closestEnemyDist < ghostDangerDistance;
+            bool ghostInsideExitRange = closestEnemy != null && closestEnemyDist < (ghostDangerDistance + ghostDangerHysteresisDistance);
+
+            if (attackerPostDepositCooldownActive)
+            {
+                _attackerThreatRetreatActive = false;
+            }
+            else if (isPowered || !carryingFood)
+            {
+                _attackerThreatRetreatActive = false;
+            }
+            else if (!_attackerThreatRetreatActive)
+            {
+                _attackerThreatRetreatActive = ghostInsideEnterRange;
+            }
+            else
+            {
+                bool reachedSafeAttackAnchor =
+                    _hasAttackAnchor &&
+                    IsInOwnTerritory(myPos) &&
+                    Vector3.Distance(myPos, _attackAnchor) <= 0.75f;
+
+                _attackerThreatRetreatActive = !reachedSafeAttackAnchor && ghostInsideExitRange;
+            }
+
+            bool ghostNearby = _attackerThreatRetreatActive;
+            bool shouldCommitReturnHome =
+                (carryingFood && !isPowered && ghostInsideEnterRange) ||
+                (isPowered && carriedFoodCount >= poweredReturnFoodThreshold);
+
+            if (shouldCommitReturnHome)
+            {
+                _attackerRegroupAfterReturnHome = true;
+            }
+            else if (_attackerRegroupAfterReturnHome &&
+                     carriedFoodCount == 0 &&
+                     deepEnoughInOwnTerritory)
+            {
+                _attackerRegroupAfterReturnHome = false;
+            }
+
+            bb.shouldReturnHome =
+                _attackerRegroupAfterReturnHome ||
+                attackerPostDepositCooldownActive ||
+                (!isPowered && ghostNearby);
 
             Vector3 homeTarget = GetClosestHomePoint();
             bb.homeTargetPosition = homeTarget;
@@ -627,7 +710,10 @@ namespace PacMan.Agent
             var attackAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: isPowered);
             var capsuleCampAssignment = RoleAssigner.Instance?.AttackManager?.GetCapsuleCampAssignment(this, activeEnemyCapsules);
 
-            if (!isPowered && timeRemaining <= lateGameCapsuleRushSeconds && TryGetClosestObjectPosition(myPos, activeEnemyCapsules, out var capsuleTarget))
+            if (!attackerPostDepositCooldownActive &&
+                !isPowered &&
+                timeRemaining <= lateGameCapsuleRushSeconds &&
+                TryGetClosestObjectPosition(myPos, activeEnemyCapsules, out var capsuleTarget))
             {
                 bb.shouldGrabPowerCapsule = true;
                 bb.powerCapsuleTargetPosition = capsuleTarget;
@@ -648,7 +734,9 @@ namespace PacMan.Agent
                 }
             }
 
-            if (attackAssignment?.FoodTarget != null && (isPowered || !ghostNearby))
+            if (!attackerPostDepositCooldownActive &&
+                attackAssignment?.FoodTarget != null &&
+                (isPowered || !ghostNearby))
             {
                 bb.safeEnemyPillsAvailable = true;
                 bb.enemyPillTargetPosition = attackAssignment.FoodTarget.transform.localPosition;
@@ -665,7 +753,32 @@ namespace PacMan.Agent
                 _hasAttackAnchor &&
                 Vector3.Distance(myPos, _attackAnchor) > 1.5f;
 
-            if (bb.shouldGrabPowerCapsule)
+            if (_attackerRegroupAfterReturnHome)
+            {
+                bool regroupComplete =
+                    carriedFoodCount == 0 &&
+                    deepEnoughInOwnTerritory;
+
+                if (regroupComplete)
+                {
+                    _attackerRegroupAfterReturnHome = false;
+                }
+                else
+                {
+                    bb.shouldGrabPowerCapsule = false;
+                    bb.shouldCampNextPowerCapsule = false;
+                    bb.shouldLootWhilePowered = false;
+                    bb.safeEnemyPillsAvailable = false;
+                    bb.shouldReturnHome = true;
+                    bb.debugReason = "Finish return-home path";
+                }
+            }
+
+            if (_attackerRegroupAfterReturnHome)
+                bb.debugReason = "Finish return-home path";
+            else if (attackerPostDepositCooldownActive)
+                bb.debugReason = "Post-deposit cooldown";
+            else if (bb.shouldGrabPowerCapsule)
                 bb.debugReason = "Late game power capsule rush";
             else if (bb.shouldCampNextPowerCapsule)
                 bb.debugReason = capsuleCampAssignment?.Reason ?? "Camp next enemy power capsule";
@@ -674,7 +787,7 @@ namespace PacMan.Agent
             else if (bb.shouldLootWhilePowered)
                 bb.debugReason = "Powered up loot mode";
             else if (bb.shouldReturnHome)
-                bb.debugReason = "Threat nearby while carrying food";
+                bb.debugReason = $"Threat nearby while carrying food (danger radius {ghostDangerDistance:F1})";
             else if (bb.safeEnemyPillsAvailable)
                 bb.debugReason = attackAssignment?.Reason ?? "Safe enemy pill available";
             else if (bb.outsideAttackZone)
@@ -802,7 +915,12 @@ namespace PacMan.Agent
                 }
             }
 
-            return closestHomePoint;
+            Vector3 retreatPoint = closestHomePoint + new Vector3(
+                isBlue ? -returnHomeOwnSideOffset : returnHomeOwnSideOffset,
+                0f,
+                0f);
+
+            return SnapToNearestFreePoint(retreatPoint);
         }
 
         private List<GameObject> GetActiveEnemyCapsules()
@@ -818,6 +936,52 @@ namespace PacMan.Agent
                     capsule.activeSelf &&
                     TeamAssignmentUtil.CheckTeam(capsule) != myTeam)
                 .ToList();
+        }
+
+        private List<GameObject> GetActiveFriendlyCapsules()
+        {
+            var capsules = _agent.GetCapsuleObjects();
+            if (capsules == null)
+                return new List<GameObject>();
+
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            return capsules
+                .Where(capsule =>
+                    capsule != null &&
+                    capsule.activeSelf &&
+                    TeamAssignmentUtil.CheckTeam(capsule) == myTeam)
+                .ToList();
+        }
+
+        private IEnumerable<Vector3> GetInflatedFriendlyCapsuleObstaclePoints()
+        {
+            var capsules = GetActiveFriendlyCapsules();
+            if (capsules == null || capsules.Count == 0)
+                yield break;
+
+            float inflation = Mathf.Max(0f, friendlyCapsuleObstacleInflation);
+            float step = _obstacleMap != null ? _obstacleMap.trueScale.x : 0.2f;
+            int radiusSteps = Mathf.Max(0, Mathf.CeilToInt(inflation / Mathf.Max(0.01f, step)));
+
+            foreach (var capsule in capsules)
+            {
+                if (capsule == null)
+                    continue;
+
+                Vector3 center = capsule.transform.localPosition;
+
+                for (int dx = -radiusSteps; dx <= radiusSteps; dx++)
+                {
+                    for (int dz = -radiusSteps; dz <= radiusSteps; dz++)
+                    {
+                        Vector3 offset = new Vector3(dx * step, 0f, dz * step);
+                        if (offset.sqrMagnitude > inflation * inflation)
+                            continue;
+
+                        yield return center + offset;
+                    }
+                }
+            }
         }
 
         private bool TryGetClosestObjectPosition(Vector3 fromPosition, List<GameObject> objects, out Vector3 targetPosition)
@@ -949,6 +1113,20 @@ namespace PacMan.Agent
             return true;
         }
 
+        private bool IsDeepEnoughInOwnTerritory(Vector3 localPosition, float extraDistance)
+        {
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            float requiredDistance = Mathf.Max(0f, extraDistance);
+
+            if (myTeam == Team.Blue)
+                return localPosition.x <= (_middleInfo.MidXLocal - requiredDistance);
+
+            if (myTeam == Team.Red)
+                return localPosition.x >= (_middleInfo.MidXLocal + requiredDistance);
+
+            return true;
+        }
+
         private Vector2 MoveToTarget(Vector3 target, float arriveDistance = 0.35f, bool ownTerritoryOnly = false)
         {
             Vector3 myLocalPos = transform.localPosition;
@@ -1001,6 +1179,12 @@ namespace PacMan.Agent
             {
                 ClearCurrentPath();
                 return Vector2.zero;
+            }
+
+            if (TryGetCloseIntruderPursuitAcceleration(decision.TargetPosition, out var pursuitAcceleration))
+            {
+                ClearCurrentPath();
+                return pursuitAcceleration;
             }
 
             return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f);
@@ -1119,6 +1303,22 @@ namespace PacMan.Agent
         private Vector2 ExecuteEvade(BTDecision decision, Vector3 velocity)
         {
             return GetEvadeAcceleration(velocity);
+        }
+
+        private bool TryGetCloseIntruderPursuitAcceleration(Vector3 trackedTargetPosition, out Vector2 pursuitAcceleration)
+        {
+            pursuitAcceleration = Vector2.zero;
+
+            Vector3 myPos = transform.localPosition;
+            float switchDistance = Mathf.Max(0.1f, defenderPurePursuitSwitchDistance);
+            float distToTrackedTarget = Vector3.Distance(myPos, trackedTargetPosition);
+
+            if (distToTrackedTarget > switchDistance)
+                return false;
+
+            Vector3 pursuitDirection = (trackedTargetPosition - myPos).normalized;
+            pursuitAcceleration = new Vector2(pursuitDirection.x, pursuitDirection.z);
+            return true;
         }
         private void OnGUI()
         {
