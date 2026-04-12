@@ -2332,7 +2332,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ebfbfa0c286248848af00f0f54b20e56, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PacMan.Game.PacManManagerModeSelector
-  mode: 2
+  mode: 0
   playback_manager: {fileID: 1238940903}
   game_manager: {fileID: 892656390}
 --- !u!4 &40357987
@@ -42626,6 +42626,8 @@ MonoBehaviour:
   estimateRadius: 0.2
   logTrackingSource: 0
   mapManager: {fileID: 0}
+  useFriendlyFoodDisappearEvidence: 1
+  foodTheftObservationDispersion: 0.2
 --- !u!4 &823461054
 Transform:
   m_ObjectHideFlags: 0
@@ -74547,8 +74549,13 @@ MonoBehaviour:
   mapManager: {fileID: 1490924509}
   gridSize: 0.2
   useMajorLanesOnlyForDefense: 1
+  singleDefenderAnchorOffset: 2
+  multiDefenderAnchorOffset: 2
   settleTime: 0.2
   verboseLogs: 1
+  attackLaneSwitchInterval: 10
+  smallerLaneBias: 0.7
+  laneRandomJitter: 0.35
 --- !u!4 &1445745587
 Transform:
   m_ObjectHideFlags: 0

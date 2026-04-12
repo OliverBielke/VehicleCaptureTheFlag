@@ -19,6 +19,12 @@ namespace PacMan.Agent.RoleAssignment
             public string Reason;
         }
 
+        public class CapsuleRushAssignment
+        {
+            public GameObject CapsuleTarget;
+            public string Reason;
+        }
+
         private readonly RoleAssigner _roleAssigner;
 
         public AttackManager(RoleAssigner roleAssigner)
@@ -127,6 +133,92 @@ namespace PacMan.Agent.RoleAssignment
             {
                 CapsuleTarget = bestCandidate.Capsule,
                 Reason = "Camp next enemy power capsule"
+            };
+        }
+
+        public CapsuleRushAssignment GetCapsuleRushAssignment(PacManAIDebugBT requester, List<GameObject> activeEnemyCapsules)
+        {
+            if (requester == null || activeEnemyCapsules == null || activeEnemyCapsules.Count == 0)
+                return null;
+
+            Team team = TeamAssignmentUtil.CheckTeam(requester.gameObject);
+            if (team == Team.Undefined)
+                return null;
+
+            var attackers = _roleAssigner
+                .GetRegisteredAgentsForTeam(team)
+                .Where(agent => agent != null && agent.AssignedRole == StaticRole.Attack)
+                .ToList();
+
+            if (attackers.Count == 0)
+                return null;
+
+            var capsuleCandidates = activeEnemyCapsules
+                .Where(capsule => capsule != null && capsule.activeSelf)
+                .Distinct()
+                .ToList();
+
+            if (capsuleCandidates.Count == 0)
+                return null;
+
+            if (attackers.Count >= 2 && capsuleCandidates.Count >= 2)
+            {
+                var attackerA = attackers[0];
+                var attackerB = attackers[1];
+                var capsuleA = capsuleCandidates[0];
+                var capsuleB = capsuleCandidates[1];
+
+                float aToA = (attackerA.transform.localPosition - capsuleA.transform.localPosition).sqrMagnitude;
+                float aToB = (attackerA.transform.localPosition - capsuleB.transform.localPosition).sqrMagnitude;
+                float bToA = (attackerB.transform.localPosition - capsuleA.transform.localPosition).sqrMagnitude;
+                float bToB = (attackerB.transform.localPosition - capsuleB.transform.localPosition).sqrMagnitude;
+
+                var assignments = new Dictionary<PacManAIDebugBT, GameObject>();
+
+                if (aToA <= aToB && aToA <= bToA && aToA <= bToB)
+                {
+                    assignments[attackerA] = capsuleA;
+                    assignments[attackerB] = capsuleB;
+                }
+                else if (aToB <= aToA && aToB <= bToA && aToB <= bToB)
+                {
+                    assignments[attackerA] = capsuleB;
+                    assignments[attackerB] = capsuleA;
+                }
+                else if (bToA <= aToA && bToA <= aToB && bToA <= bToB)
+                {
+                    assignments[attackerB] = capsuleA;
+                    assignments[attackerA] = capsuleB;
+                }
+                else
+                {
+                    assignments[attackerB] = capsuleB;
+                    assignments[attackerA] = capsuleA;
+                }
+
+                if (assignments.TryGetValue(requester, out var assignedCapsule))
+                {
+                    return new CapsuleRushAssignment
+                    {
+                        CapsuleTarget = assignedCapsule,
+                        Reason = "Assigned split enemy power capsule"
+                    };
+                }
+
+                return null;
+            }
+
+            var fallbackCapsule = capsuleCandidates
+                .OrderBy(capsule => (requester.transform.localPosition - capsule.transform.localPosition).sqrMagnitude)
+                .FirstOrDefault();
+
+            if (fallbackCapsule == null)
+                return null;
+
+            return new CapsuleRushAssignment
+            {
+                CapsuleTarget = fallbackCapsule,
+                Reason = "Assigned nearest enemy power capsule"
             };
         }
 
