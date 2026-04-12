@@ -18,6 +18,8 @@ namespace PacMan.Agent.RoleAssignment
         [Header("Map Analysis")]
         [SerializeField] private float gridSize = 0.2f;
         [SerializeField] private bool useMajorLanesOnlyForDefense = true;
+        [SerializeField] private float singleDefenderAnchorOffset = 2f;
+        [SerializeField] private float multiDefenderAnchorOffset = 2f;
 
         [Header("Timing")]
         [SerializeField] private float settleTime = 0.5f;
@@ -231,7 +233,7 @@ namespace PacMan.Agent.RoleAssignment
                 Team team = TeamAssignmentUtil.CheckTeam(defender.gameObject);
 
                 var middleLane = availableLanes[availableLanes.Count / 2];
-                Vector3 anchor = GetDefenseAnchorForLane(middleLane, team, 2f);
+                Vector3 anchor = GetDefenseAnchorForLane(middleLane, team, singleDefenderAnchorOffset);
 
                 defender.SetDefenseAnchor(anchor);
                 Debug.Log($"{defender.name} defense anchor -> {anchor} | lane={middleLane.Label}");
@@ -250,10 +252,10 @@ namespace PacMan.Agent.RoleAssignment
                 Team t0 = TeamAssignmentUtil.CheckTeam(d0.gameObject);
                 Team t1 = TeamAssignmentUtil.CheckTeam(d1.gameObject);
 
-                Vector3 d0BottomAnchor = GetDefenseAnchorForLane(bottomLane, t0, 2f);
-                Vector3 d0TopAnchor = GetDefenseAnchorForLane(topLane, t0, 2f);
-                Vector3 d1BottomAnchor = GetDefenseAnchorForLane(bottomLane, t1, 2f);
-                Vector3 d1TopAnchor = GetDefenseAnchorForLane(topLane, t1, 2f);
+                Vector3 d0BottomAnchor = GetDefenseAnchorForLane(bottomLane, t0, multiDefenderAnchorOffset);
+                Vector3 d0TopAnchor = GetDefenseAnchorForLane(topLane, t0, multiDefenderAnchorOffset);
+                Vector3 d1BottomAnchor = GetDefenseAnchorForLane(bottomLane, t1, multiDefenderAnchorOffset);
+                Vector3 d1TopAnchor = GetDefenseAnchorForLane(topLane, t1, multiDefenderAnchorOffset);
 
                 float pairingA =
                     (d0.transform.localPosition - d0BottomAnchor).sqrMagnitude +
@@ -292,7 +294,7 @@ namespace PacMan.Agent.RoleAssignment
 
                 foreach (var lane in availableLanes)
                 {
-                    Vector3 candidateAnchor = GetDefenseAnchorForLane(lane, team, 2f);
+                    Vector3 candidateAnchor = GetDefenseAnchorForLane(lane, team, multiDefenderAnchorOffset);
                     float distSqr = (defender.transform.localPosition - candidateAnchor).sqrMagnitude;
                     assignments.Add((defender, lane, distSqr));
                 }
@@ -307,7 +309,7 @@ namespace PacMan.Agent.RoleAssignment
                     continue;
 
                 Team team = TeamAssignmentUtil.CheckTeam(candidate.defender.gameObject);
-                Vector3 anchor = GetDefenseAnchorForLane(candidate.lane, team, 2f);
+                Vector3 anchor = GetDefenseAnchorForLane(candidate.lane, team, multiDefenderAnchorOffset);
 
                 candidate.defender.SetDefenseAnchor(anchor);
                 usedDefenders.Add(candidate.defender);
@@ -327,12 +329,12 @@ namespace PacMan.Agent.RoleAssignment
                 var closestLane = availableLanes
                     .OrderBy(l =>
                     {
-                        Vector3 anchor = GetDefenseAnchorForLane(l, team, 2f);
+                        Vector3 anchor = GetDefenseAnchorForLane(l, team, multiDefenderAnchorOffset);
                         return (defender.transform.localPosition - anchor).sqrMagnitude;
                     })
                     .First();
 
-                Vector3 fallbackAnchor = GetDefenseAnchorForLane(closestLane, team, 2f);
+                Vector3 fallbackAnchor = GetDefenseAnchorForLane(closestLane, team, multiDefenderAnchorOffset);
                 defender.SetDefenseAnchor(fallbackAnchor);
 
                 Debug.Log($"{defender.name} fallback defense anchor -> {fallbackAnchor} | lane={closestLane.Label}");

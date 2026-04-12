@@ -44,10 +44,14 @@ namespace PacMan.Agent.EnemyLocalization
         [SerializeField] private float estimateRadius = 0.2f;
         [SerializeField] private bool logTrackingSource = false;
         [SerializeField] private MapManager mapManager;
+        [Header("Food Evidence")]
+        [SerializeField] private bool useFriendlyFoodDisappearEvidence = true;
+        [SerializeField] private float foodTheftObservationDispersion = 0.2f;
 
         private ObstacleMapV2 _obstacleMap;
         private readonly Dictionary<int, ParticleFilter> _enemyFilters = new Dictionary<int, ParticleFilter>();
         private readonly Dictionary<int, EnemyTrackState> _trackStates = new Dictionary<int, EnemyTrackState>();
+        private readonly Dictionary<int, bool> _knownFoodActiveStates = new Dictionary<int, bool>();
 
         private Bounds _pfBounds;
         private bool _initialized = false;
@@ -62,6 +66,7 @@ namespace PacMan.Agent.EnemyLocalization
             public float LastObservationTime;
             public Vector3 EstimatedVelocity;
             public bool HasObservationHistory;
+            public int LastKnownRespawnStep;
         }
 
         private void Awake()
@@ -91,6 +96,8 @@ namespace PacMan.Agent.EnemyLocalization
 
             if (_trackingSource == null)
                 return;
+
+            RefreshFriendlyFoodDisappearEvidence();
 
             var visibleEnemyAgents = _trackingSource.GetVisibleEnemyAgents();
             var observations = _trackingSource.GetEnemyObservations();
@@ -129,6 +136,7 @@ namespace PacMan.Agent.EnemyLocalization
 
             _enemyFilters.Clear();
             _trackStates.Clear();
+            _knownFoodActiveStates.Clear();
             _initialized = true;
         }
 
@@ -166,7 +174,8 @@ namespace PacMan.Agent.EnemyLocalization
                     PreviousObservationPosition = obsPosition,
                     LastObservationTime = obsTime,
                     EstimatedVelocity = Vector3.zero,
-                    HasObservationHistory = false
+                    HasObservationHistory = false,
+                    LastKnownRespawnStep = 0
                 };
 
                 _trackStates[enemyId] = state;
@@ -232,6 +241,8 @@ namespace PacMan.Agent.EnemyLocalization
                 pf.Predict(drift, dt);
             }
 
+            RefreshRespawnResetsFromLiveEnemyAgents();
+
             if (visibleEnemyAgents != null)
             {
                 foreach (var enemy in visibleEnemyAgents)
@@ -241,6 +252,7 @@ namespace PacMan.Agent.EnemyLocalization
                     int enemyId = enemy.serverIndex;
                     Vector3 exactPos = enemy.transform.localPosition;
                     visibleEnemyIds.Add(enemyId);
+                    HandleRespawnReset(enemyId, enemy.GetLastRespawnStep(), exactPos);
                     ParticleFilter pf = GetOrCreateFilter(enemyId, exactPos);
                     UpdateTrackStateFromObservation(enemyId, exactPos, now);
                     pf.UpdateWithExactObservation(exactPos);
@@ -258,6 +270,9 @@ namespace PacMan.Agent.EnemyLocalization
                         continue;
 
                     int enemyId = obs.ServerIndex;
+                    if (HandleRespawnReset(enemyId, obs.LastRespawnStep))
+                        continue;
+
                     Vector3 correctedObsPos = CorrectNoisyObservationPosition(obs.Position);
 
                     ParticleFilter pf = GetOrCreateFilter(enemyId, correctedObsPos);
@@ -315,6 +330,7 @@ namespace PacMan.Agent.EnemyLocalization
         {
             _enemyFilters.Clear();
             _trackStates.Clear();
+            _knownFoodActiveStates.Clear();
         }
 
         private ParticleFilter GetOrCreateFilter(int enemyId, Vector3 initialGuess)
@@ -347,6 +363,181 @@ namespace PacMan.Agent.EnemyLocalization
             _enemyFilters[enemyId] = pf;
             return pf;
         }
+
+        private bool HandleRespawnReset(int enemyId, int observedRespawnStep, Vector3? explicitRespawnPosition = null)
+        {
+            if (enemyId < 0 || observedRespawnStep <= 0)
+                return false;
+
+            if (!_trackStates.TryGetValue(enemyId, out var state))
+            {
+                state = new EnemyTrackState
+                {
+                    LastKnownRespawnStep = observedRespawnStep
+                };
+                _trackStates[enemyId] = state;
+            }
+
+            if (observedRespawnStep <= state.LastKnownRespawnStep)
+                return false;
+
+            Vector3 respawnPosition;
+            if (explicitRespawnPosition.HasValue)
+            {
+                respawnPosition = explicitRespawnPosition.Value;
+            }
+            else if (!TryGetEnemyRespawnPosition(enemyId, out respawnPosition))
+            {
+                state.LastKnownRespawnStep = observedRespawnStep;
+                return false;
+            }
+
+            ResetEnemyFilter(enemyId, respawnPosition, observedRespawnStep);
+            return true;
+        }
+
+        private void ResetEnemyFilter(int enemyId, Vector3 respawnPosition, int respawnStep)
+        {
+            Vector3 snappedRespawnPosition = SnapEstimateToTraversable(respawnPosition);
+            _enemyFilters.Remove(enemyId);
+
+            var state = new EnemyTrackState
+            {
+                LastObservationPosition = snappedRespawnPosition,
+                PreviousObservationPosition = snappedRespawnPosition,
+                LastObservationTime = Time.fixedTime,
+                EstimatedVelocity = Vector3.zero,
+                HasObservationHistory = false,
+                LastKnownRespawnStep = respawnStep
+            };
+
+            _trackStates[enemyId] = state;
+
+            ParticleFilter pf = GetOrCreateFilter(enemyId, snappedRespawnPosition);
+            pf.UpdateWithExactObservation(snappedRespawnPosition);
+        }
+
+        private bool TryGetEnemyRespawnPosition(int enemyId, out Vector3 respawnPosition)
+        {
+            respawnPosition = Vector3.zero;
+
+            var allAgents = FindObjectsByType<PacManAgentManager>(FindObjectsSortMode.None);
+            foreach (var agent in allAgents)
+            {
+                if (agent == null || agent.serverIndex != enemyId)
+                    continue;
+
+                respawnPosition = agent.GetStartPosition();
+                return true;
+            }
+
+            return false;
+        }
+
+        private void RefreshFriendlyFoodDisappearEvidence()
+        {
+            if (!useFriendlyFoodDisappearEvidence || _trackingSource?.PacManGameManager == null)
+                return;
+
+            Team myTeam = TeamAssignmentUtil.CheckTeam(_trackingSource.gameObject);
+            if (myTeam == Team.Undefined)
+                return;
+
+            var foods = _trackingSource.PacManGameManager.foodList;
+            if (foods == null)
+                return;
+
+            foreach (var food in foods)
+            {
+                if (food == null)
+                    continue;
+
+                if (TeamAssignmentUtil.CheckTeam(food) != myTeam)
+                    continue;
+
+                int foodId = food.GetInstanceID();
+                bool isActive = food.activeSelf;
+
+                if (_knownFoodActiveStates.TryGetValue(foodId, out var wasActive) &&
+                    wasActive &&
+                    !isActive)
+                {
+                    ApplyFoodTheftEvidence(food.transform.localPosition);
+                }
+
+                _knownFoodActiveStates[foodId] = isActive;
+            }
+        }
+
+        private void ApplyFoodTheftEvidence(Vector3 eatenFoodPosition)
+        {
+            int enemyId = FindClosestTrackedEnemyTo(eatenFoodPosition);
+            if (enemyId < 0)
+                return;
+
+            Vector3 correctedPosition = CorrectNoisyObservationPosition(eatenFoodPosition);
+            CollapseEnemyFilterToExactPosition(enemyId, correctedPosition);
+        }
+
+        private void CollapseEnemyFilterToExactPosition(int enemyId, Vector3 exactPosition)
+        {
+            Vector3 snappedPosition = SnapEstimateToTraversable(exactPosition);
+            _enemyFilters.Remove(enemyId);
+
+            var state = new EnemyTrackState
+            {
+                LastObservationPosition = snappedPosition,
+                PreviousObservationPosition = snappedPosition,
+                LastObservationTime = Time.fixedTime,
+                EstimatedVelocity = Vector3.zero,
+                HasObservationHistory = false,
+                LastKnownRespawnStep = _trackStates.TryGetValue(enemyId, out var existingState)
+                    ? existingState.LastKnownRespawnStep
+                    : 0
+            };
+
+            _trackStates[enemyId] = state;
+
+            ParticleFilter pf = GetOrCreateFilter(enemyId, snappedPosition);
+            pf.UpdateWithExactObservation(snappedPosition);
+        }
+
+        private int FindClosestTrackedEnemyTo(Vector3 position)
+        {
+            if (_trackingSource?.PacManGameManager == null)
+                return -1;
+
+            string friendlyTag = _trackingSource.tag;
+            float bestDistSq = float.MaxValue;
+            int bestEnemyId = -1;
+
+            var allAgents = _trackingSource.PacManGameManager.agents;
+            if (allAgents == null)
+                return -1;
+
+            foreach (var enemy in allAgents.Select(obj => obj != null ? obj.GetComponent<PacManAgentManager>() : null))
+            {
+                if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
+                    continue;
+
+                if (enemy.CompareTag(friendlyTag) || enemy.serverIndex < 0)
+                    continue;
+
+                Vector3 candidatePosition;
+                if (!TryGetEstimate(enemy.serverIndex, out candidatePosition))
+                    candidatePosition = enemy.GetStartPosition();
+
+                float distSq = (candidatePosition - position).sqrMagnitude;
+                if (distSq >= bestDistSq)
+                    continue;
+
+                bestDistSq = distSq;
+                bestEnemyId = enemy.serverIndex;
+            }
+
+            return bestEnemyId;
+        }
+
         private bool IsPointVisibleFromAgent(PacManAgentManager agent, Vector3 pointLocal)
         {
             Vector3 origin = agent.transform.position;
@@ -494,6 +685,28 @@ namespace PacMan.Agent.EnemyLocalization
                 Gizmos.color = Color.green;
                 Vector3 est = pf.GetEstimatedPosition();
                 Gizmos.DrawSphere(est + Vector3.up * 0.3f, estimateRadius);
+            }
+        }
+
+        private void RefreshRespawnResetsFromLiveEnemyAgents()
+        {
+            if (_trackingSource?.PacManGameManager == null)
+                return;
+
+            var allAgents = _trackingSource.PacManGameManager.agents;
+            if (allAgents == null)
+                return;
+
+            string friendlyTag = _trackingSource.tag;
+            foreach (var enemy in allAgents.Select(obj => obj != null ? obj.GetComponent<PacManAgentManager>() : null))
+            {
+                if (enemy == null || enemy.gameObject == null || !enemy.gameObject.activeInHierarchy)
+                    continue;
+
+                if (enemy.CompareTag(friendlyTag))
+                    continue;
+
+                HandleRespawnReset(enemy.serverIndex, enemy.GetLastRespawnStep(), enemy.GetStartPosition());
             }
         }
     }
