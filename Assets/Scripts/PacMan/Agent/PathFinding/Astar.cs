@@ -93,6 +93,8 @@ namespace PacMan.Agent.PathFinding
                     {
                         for (var i = 0; i < path.Count - 1; i++)
                         {
+                            // Drawing this for slightly longer (e.g., 3 seconds) so it stays 
+                            // visible just a bit longer than the search tree
                             Debug.DrawLine(path[i], path[i + 1], Color.green, 3f);
                         }
                     }
@@ -113,6 +115,7 @@ namespace PacMan.Agent.PathFinding
                             voronoiMap:_voronoiMap, parent: currentNode);
                         openSet.Add(neighborNode);
                         
+                        // Draw cyan lines for newly explored paths. They will vanish after 2 seconds.
                         if (DebugManager.Instance != null && DebugManager.Instance.aStar)
                         {
                             Vector3 currWorld = _obstacleMap.CellToWorld(new Vector3Int(currentNode.Position.x, 0, currentNode.Position.y));
@@ -124,6 +127,7 @@ namespace PacMan.Agent.PathFinding
                     {
                         neighborNode.SwitchParent(currentNode);
                         
+                        // Draw magenta lines if A* found a faster shortcut to an already explored node
                         if (DebugManager.Instance != null && DebugManager.Instance.aStar)
                         {
                             Vector3 currWorld = _obstacleMap.CellToWorld(new Vector3Int(currentNode.Position.x, 0, currentNode.Position.y));
@@ -199,6 +203,10 @@ namespace PacMan.Agent.PathFinding
                 return parent.GCost + multiplier * Vector3.Distance(parentWorld, currentWorld);
             }
 
+            /// <summary>
+            /// Switches the parent of this node to a new parent and updates the gCost accordingly. This is used when we find a better path to an existing node in the open set.
+            /// </summary>
+            /// <param name="newParent">The new parent node. </param>
             public void SwitchParent(AStarNode newParent)
             {
                 Parent = newParent;

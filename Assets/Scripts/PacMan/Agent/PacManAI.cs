@@ -21,8 +21,19 @@ namespace PacMan.Agent
         Attack,
         Defend
     }
+
     public class PacManAIDebugBT : PacManAI
     {
+        public class TrackedEnemyInfo
+        {
+            public int ServerIndex;
+            public Vector3 Position;
+            public bool IsGhost;
+            public bool IsVisible;
+            public bool HasFood;
+            public bool HasPosition;
+        }
+
         private bool _hasGoal;
         private Vector3 _goalPosition;
         private List<Node> _waypoints;
@@ -41,8 +52,14 @@ namespace PacMan.Agent
         [SerializeField] private StaticRole _assignedRole = StaticRole.None;
         [SerializeField] private Vector3 _defenseAnchor;
         [SerializeField] private bool _hasDefenseAnchor = false;
+        [SerializeField] private Vector3 _attackAnchor;
+        [SerializeField] private bool _hasAttackAnchor = false;
         private MapMiddleAnalyzer _middleAnalyzer;
         private MapMiddleAnalyzer.MiddleInfo _middleInfo;
+        [Header("Attack Patrol")]
+        [SerializeField] private int attackPatrolSwitchSteps = 30;
+        [SerializeField] private float attackPatrolOffset = 1.0f;
+        [SerializeField] private float attackPatrolArriveDistance = 0.15f;
         private AgentMode _currentMode;
         private AgentMode _previousMode;
         private bool _visualizerLinked = false;
@@ -57,11 +74,16 @@ namespace PacMan.Agent
 
         public StaticRole AssignedRole => _assignedRole;
         public bool HasAssignedRole => _assignedRole != StaticRole.None;
+        public PacManAgentManager AgentManager => _agent;
+        public Vector3 DefenseAnchor => _defenseAnchor;
+        public bool HasDefenseAnchor => _hasDefenseAnchor;
+        public Vector3 AttackAnchor => _attackAnchor;
+        public bool HasAttackAnchor => _hasAttackAnchor;
 
         public void SetAssignedRole(StaticRole role)
         {
             _assignedRole = role;
-            UnityEngine.Debug.Log($"{name} assigned role: {_assignedRole}");
+            Debug.Log($"{name} assigned role: {_assignedRole}");
         }
 
         public void SetDefenseAnchor(Vector3 anchor)
@@ -73,6 +95,17 @@ namespace PacMan.Agent
         public void ClearDefenseAnchor()
         {
             _hasDefenseAnchor = false;
+        }
+
+        public void SetAttackAnchor(Vector3 anchor)
+        {
+            _attackAnchor = anchor;
+            _hasAttackAnchor = true;
+        }
+
+        public void ClearAttackAnchor()
+        {
+            _hasAttackAnchor = false;
         }
         public override void Initialize(MapManager mapManager)
         {
@@ -106,6 +139,11 @@ namespace PacMan.Agent
             if (_agent != null) _previousRespawnStep = _agent.GetLastRespawnStep();
             
             _voronoiPartitioning = new VoronoiPartitioning(_obstacleMap);
+        }
+
+        private void OnDisable()
+        {
+            RoleAssigner.Instance?.UnregisterAgent(this);
         }
 
         public override PacManAction Tick()
@@ -417,7 +455,7 @@ namespace PacMan.Agent
 
             if (aStarPath == null || aStarPath.Count < 2)
             {
-                UnityEngine.Debug.LogWarning("MakePath failed: no valid A* path.");
+                Debug.LogWarning("MakePath failed: no valid A* path.");
                 _waypoints = null;
                 _droneControlling = null;
                 return false;
@@ -431,7 +469,7 @@ namespace PacMan.Agent
 
             if (nodes.Count < 2)
             {
-                UnityEngine.Debug.LogWarning("MakePath failed: not enough nodes.");
+                Debug.LogWarning("MakePath failed: not enough nodes.");
                 _waypoints = null;
                 _droneControlling = null;
                 return false;
@@ -475,32 +513,13 @@ namespace PacMan.Agent
             DefenderBlackboard bb = new DefenderBlackboard();
 
             Vector3 myPos = transform.localPosition;
-            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+            var defendAssignment = RoleAssigner.Instance?.DefendManager?.GetAssignment(this);
 
-            PacManAgentManager visibleEnemyPacman = null;
-            float closestPacmanDist = float.MaxValue;
-
-            if (visibleEnemies != null)
-            {
-                foreach (var enemy in visibleEnemies)
-                {
-                    if (!enemy.IsGhost())
-                    {
-                        float dist = Vector3.Distance(myPos, enemy.transform.localPosition);
-                        if (dist < closestPacmanDist)
-                        {
-                            closestPacmanDist = dist;
-                            visibleEnemyPacman = enemy;
-                        }
-                    }
-                }
-            }
-
-            if (visibleEnemyPacman != null)
+            if (defendAssignment != null)
             {
                 bb.enemyPacmanIntruderSuspected = true;
-                bb.suspectedIntruderPosition = visibleEnemyPacman.transform.localPosition;
-                bb.debugReason = "Visible intruder";
+                bb.suspectedIntruderPosition = defendAssignment.TargetPosition;
+                bb.debugReason = defendAssignment.Reason;
             }
 
             bb.enemyLikelyCrossingMyLane = false;
@@ -509,8 +528,8 @@ namespace PacMan.Agent
             bb.safeMiddlePillsAvailable = false;
             bb.safeMiddlePillPosition = Vector3.zero;
 
-            bb.formationPoint = _defenseAnchor;
-            bb.dropZonePoint = _defenseAnchor;
+            bb.formationPoint = _hasDefenseAnchor ? _defenseAnchor : myPos;
+            bb.dropZonePoint = _hasDefenseAnchor ? _defenseAnchor : myPos;
 
             bb.outsideDefensiveZone =
                 _hasDefenseAnchor &&
@@ -526,26 +545,25 @@ namespace PacMan.Agent
             AttackerBlackboard bb = new AttackerBlackboard();
 
             Vector3 myPos = transform.localPosition;
-            var visibleEnemies = _agent.GetVisibleEnemyAgents();
-            var foodObjects = _agent.GetFoodObjects();
+            var trackedEnemies = GetTrackedEnemies();
             var activeFood = _agent.GetFoodObjects().FindAll(f => f.activeSelf &&
                                                 TeamAssignmentUtil.CheckTeam(f) != TeamAssignmentUtil.CheckTeam(gameObject));
 
             float closestGhostDist = float.MaxValue;
-            PacManAgentManager closestGhost = null;
+            TrackedEnemyInfo closestGhost = null;
 
-            if (visibleEnemies != null)
+            if (trackedEnemies != null)
             {
-                foreach (var enemy in visibleEnemies)
+                foreach (var enemy in trackedEnemies)
                 {
-                    if (enemy.IsGhost())
+                    if (enemy == null || !enemy.HasPosition || !enemy.IsGhost)
+                        continue;
+
+                    float dist = Vector3.Distance(myPos, enemy.Position);
+                    if (dist < closestGhostDist)
                     {
-                        float dist = Vector3.Distance(myPos, enemy.transform.localPosition);
-                        if (dist < closestGhostDist)
-                        {
-                            closestGhostDist = dist;
-                            closestGhost = enemy;
-                        }
+                        closestGhostDist = dist;
+                        closestGhost = enemy;
                     }
                 }
             }
@@ -558,45 +576,126 @@ namespace PacMan.Agent
             Vector3 homeTarget = GetClosestHomePoint();
             bb.homeTargetPosition = homeTarget;
 
-            GameObject closestFoodObj = null;
-            float closestFoodDist = float.MaxValue;
+            var attackAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood);
 
-            foreach (var food in activeFood)
-            {
-                float dist = Vector3.Distance(myPos, food.transform.localPosition);
-                if (dist < closestFoodDist)
-                {
-                    closestFoodDist = dist;
-                    closestFoodObj = food;
-                }
-            }
-
-            if (closestFoodObj != null && !ghostNearby)
+            if (attackAssignment?.FoodTarget != null && !ghostNearby)
             {
                 bb.safeEnemyPillsAvailable = true;
-                bb.enemyPillTargetPosition = closestFoodObj.transform.localPosition;
+                bb.enemyPillTargetPosition = attackAssignment.FoodTarget.transform.localPosition;
             }
 
             bb.safeMiddlePillsAvailable = false;
             bb.middlePillTargetPosition = Vector3.zero;
 
-            bb.attackPositionTarget = _defenseAnchor;
-            bb.patrolTargetPosition = _defenseAnchor;
+            Vector3 attackAnchor = _hasAttackAnchor ? _attackAnchor : myPos;
+            bb.attackPositionTarget = attackAnchor;
+            bb.patrolTargetPosition = GetAttackPatrolPoint(attackAnchor);
 
             bb.outsideAttackZone =
-                _hasDefenseAnchor &&
-                Vector3.Distance(myPos, _defenseAnchor) > 1.5f;
+                _hasAttackAnchor &&
+                Vector3.Distance(myPos, _attackAnchor) > 1.5f;
 
             if (bb.shouldReturnHome)
                 bb.debugReason = "Threat nearby while carrying food";
             else if (bb.safeEnemyPillsAvailable)
-                bb.debugReason = "Safe enemy pill available";
+                bb.debugReason = attackAssignment?.Reason ?? "Safe enemy pill available";
             else if (bb.outsideAttackZone)
                 bb.debugReason = "Outside attack zone";
             else
                 bb.debugReason = "Patrol attack zone";
 
             return bb;
+        }
+
+        public List<TrackedEnemyInfo> GetTrackedEnemies()
+        {
+            var tracked = new Dictionary<int, TrackedEnemyInfo>();
+            var tracker = EnemyTrackerManager.Instance;
+            var observations = _agent.GetEnemyObservations();
+
+            if (observations.Observations != null)
+            {
+                foreach (var observation in observations.Observations)
+                {
+                    if (observation.ServerIndex < 0)
+                        continue;
+
+                    Vector3 estimatedPosition = Vector3.zero;
+                    bool hasEstimate = tracker != null &&
+                                       tracker.TryGetEstimate(observation.ServerIndex, out estimatedPosition);
+                    bool hasObservationPosition = observation.Visible || observation.Position != Vector3.zero;
+
+                    if (!hasEstimate && !hasObservationPosition)
+                        continue;
+
+                    tracked[observation.ServerIndex] = new TrackedEnemyInfo
+                    {
+                        ServerIndex = observation.ServerIndex,
+                        Position = hasEstimate ? estimatedPosition : observation.Position,
+                        IsGhost = observation.IsGhost,
+                        IsVisible = observation.Visible,
+                        HasFood = observation.HasFood,
+                        HasPosition = true
+                    };
+                }
+            }
+
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+            if (visibleEnemies != null)
+            {
+                foreach (var enemy in visibleEnemies)
+                {
+                    if (enemy == null || enemy.serverIndex < 0)
+                        continue;
+
+                    Vector3 position = enemy.transform.localPosition;
+                    if (tracker != null && tracker.TryGetEstimate(enemy.serverIndex, out var estimatedPosition))
+                        position = estimatedPosition;
+
+                    tracked[enemy.serverIndex] = new TrackedEnemyInfo
+                    {
+                        ServerIndex = enemy.serverIndex,
+                        Position = position,
+                        IsGhost = enemy.IsGhost(),
+                        IsVisible = true,
+                        HasFood = enemy.GetCarriedFoodCount() > 0,
+                        HasPosition = true
+                    };
+                }
+            }
+
+            return tracked.Values.ToList();
+        }
+
+        private Vector3 GetAttackPatrolPoint(Vector3 anchor)
+        {
+            if (!_hasAttackAnchor)
+                return anchor;
+
+            int switchSteps = Mathf.Max(1, attackPatrolSwitchSteps);
+            int stepBucket = Mathf.FloorToInt(_agent.GetStepsSinceMatchStart() / (float)switchSteps);
+            bool usePositiveOffset = ((stepBucket + Mathf.Abs(GetInstanceID())) % 2) == 0;
+            float zOffsetMagnitude = Mathf.Max(0.1f, attackPatrolOffset);
+            float zOffset = usePositiveOffset ? zOffsetMagnitude : -zOffsetMagnitude;
+
+            Vector3 patrolPoint = anchor + new Vector3(0f, 0f, zOffset);
+
+            if (_obstacleMap.GetLocalPointTraversibility(patrolPoint) == ObstacleMapV2.Traversability.Free)
+                return patrolPoint;
+
+            patrolPoint = anchor + new Vector3(0f, 0f, -zOffset);
+            if (_obstacleMap.GetLocalPointTraversibility(patrolPoint) == ObstacleMapV2.Traversability.Free)
+                return patrolPoint;
+
+            Vector3 deeperOwnSide = anchor + new Vector3(
+                TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue ? -0.75f : 0.75f,
+                0f,
+                0f);
+
+            if (_obstacleMap.GetLocalPointTraversibility(deeperOwnSide) == ObstacleMapV2.Traversability.Free)
+                return deeperOwnSide;
+
+            return anchor;
         }
 
         private Vector3 GetClosestHomePoint()
@@ -843,7 +942,7 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: attackPatrolArriveDistance);
         }
         private Vector2 ExecuteEvade(BTDecision decision, Vector3 velocity)
         {
