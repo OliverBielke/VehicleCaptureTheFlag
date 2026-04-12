@@ -39,44 +39,51 @@ namespace PacMan.Agent.PathFinding
         /// <param name="start">Start position. </param>
         /// <param name="goal">Goal position. </param>
         /// <returns>The planned path. </returns>
-        public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal)
+        public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal, 
+            Dictionary<Vector2Int, VoronoiCellData> voronoiMap = null)
         {
-            const float gridSize = 0.2f;
-            start.y = 0f;
-            goal.y = 0f;
-            start = FindNearestFreeCell(RoundToGrid(start, gridSize), gridSize);
-            goal = RoundToGrid(goal, gridSize);
+            _voronoiMap = voronoiMap;
+            
+            // Convert world positions to map grid cells
+            var startCell3D = _obstacleMap.WorldToCell(start);
+            var goalCell3D = _obstacleMap.WorldToCell(goal);
+            
+            var startCell = new Vector2Int(startCell3D.x, startCell3D.z);
+            var goalCell = new Vector2Int(goalCell3D.x, goalCell3D.z);
 
-            // Mark the start and goal positions with an X so they stand out
+            startCell = FindNearestFreeCell(startCell);
+
+            // Get true world positions for precise debug drawing
+            var startWorld = _obstacleMap.CellToWorld(new Vector3Int(startCell.x, 0, startCell.y));
+            var goalWorld = _obstacleMap.CellToWorld(new Vector3Int(goalCell.x, 0, goalCell.y));
+
+            // Mark the start and goal positions with an X
             if (DebugManager.Instance != null && DebugManager.Instance.aStar)
             {
-                var markerSize = 0.3f; // Adjust this if the cross is too big or small
-        
-                // Draw a Yellow cross for the Start position
-                Debug.DrawLine(start + new Vector3(-markerSize, 0, -markerSize), start + new Vector3(markerSize, 0, markerSize), Color.yellow, 3f);
-                Debug.DrawLine(start + new Vector3(-markerSize, 0, markerSize), start + new Vector3(markerSize, 0, -markerSize), Color.yellow, 3f);
+                var markerSize = 0.3f;
+                Debug.DrawLine(startWorld + new Vector3(-markerSize, 0, -markerSize), startWorld + new Vector3(markerSize, 0, markerSize), Color.yellow, 3f);
+                Debug.DrawLine(startWorld + new Vector3(-markerSize, 0, markerSize), startWorld + new Vector3(markerSize, 0, -markerSize), Color.yellow, 3f);
 
-                // Draw a Red cross for the Goal position
-                Debug.DrawLine(goal + new Vector3(-markerSize, 0, -markerSize), goal + new Vector3(markerSize, 0, markerSize), Color.red, 3f);
-                Debug.DrawLine(goal + new Vector3(-markerSize, 0, markerSize), goal + new Vector3(markerSize, 0, -markerSize), Color.red, 3f);
+                Debug.DrawLine(goalWorld + new Vector3(-markerSize, 0, -markerSize), goalWorld + new Vector3(markerSize, 0, markerSize), Color.red, 3f);
+                Debug.DrawLine(goalWorld + new Vector3(-markerSize, 0, markerSize), goalWorld + new Vector3(markerSize, 0, -markerSize), Color.red, 3f);
             }
             
-            if (!IsTraversableAStar(goal))
+            if (!IsTraversableAStar(goalCell))
             {
-                // Debug.LogError($"A* goal {goal} is not traversable. Trying closest position.");
-                goal = FindNearestFreeCell(goal, gridSize);
-
-                if (!IsTraversableAStar(goal))
+                goalCell = FindNearestFreeCell(goalCell);
+                if (!IsTraversableAStar(goalCell))
                 {
-                    Debug.LogError($"A* goal {goal} is not traversable. Not even surrounding nodes. Can't plan path.");
+                    Debug.LogError($"A* goal {goalCell} is not traversable. Not even surrounding nodes. Can't plan path.");
                     return null;
                 }
             }
             
             List<AStarNode> openSet = new();
-            HashSet<Vector3> closedSet = new();
+            HashSet<Vector2Int> closedSet = new();
 
-            var startNode = new AStarNode(pos:start, goal:goal);
+            // Pass the map instance so the node can check precomputed distances
+            var startNode = new AStarNode(pos: startCell, goal: goalCell, obstacleMap: _obstacleMap, 
+                voronoiMap: _voronoiMap, parent: null);
             openSet.Add(startNode);
             
             const int maxIterations = 50000;
@@ -91,18 +98,12 @@ namespace PacMan.Agent.PathFinding
                 closedSet.Add(currentNode.Position);
                 
                 _astarExploredNodes.Add(currentNode.Position);
-
-                var distToGoal = Vector2.Distance(
-                    new Vector2(currentNode.Position.x, currentNode.Position.z), 
-                    new Vector2(goal.x, goal.z)
-                );
                 
-                if (distToGoal < gridSize / 2f) //If at the goal grid
+                // Check if we hit the exact goal cell
+                if (currentNode.Position == goalCell) 
                 {
-                    // Debug.Log($"A* found path in {iter} iterations");
                     var path = ReconstructPath(currentNode);
                     
-                    // Draw the final winning path in Green.
                     if (DebugManager.Instance != null && DebugManager.Instance.aStar)
                     {
                         for (var i = 0; i < path.Count - 1; i++)
@@ -116,25 +117,25 @@ namespace PacMan.Agent.PathFinding
                     return path;
                 }
                 
-                foreach (Vector3 neighborPos in GetNeighbors(currentNode.Position, gridSize))
+                foreach (Vector2Int neighborPos in GetNeighbors(currentNode.Position))
                 {
-                    if (closedSet.Contains(neighborPos))
-                        continue;
-                    
-                    if (!IsTraversableAStar(neighborPos))
-                        continue;
+                    if (closedSet.Contains(neighborPos)) continue;
+                    if (!IsTraversableAStar(neighborPos)) continue;
                     
                     AStarNode neighborNode = openSet.FirstOrDefault(n => n.Position == neighborPos);
                     
                     if (neighborNode == null)
                     {
-                        neighborNode = new AStarNode(pos: neighborPos, parent: currentNode, goal: goal);
+                        neighborNode = new AStarNode(pos: neighborPos, goal: goalCell, obstacleMap: _obstacleMap, 
+                            voronoiMap:_voronoiMap, parent: currentNode);
                         openSet.Add(neighborNode);
                         
                         // Draw cyan lines for newly explored paths. They will vanish after 2 seconds.
                         if (DebugManager.Instance != null && DebugManager.Instance.aStar)
                         {
-                            Debug.DrawLine(currentNode.Position, neighborPos, Color.cyan, 2f);
+                            Vector3 currWorld = _obstacleMap.CellToWorld(new Vector3Int(currentNode.Position.x, 0, currentNode.Position.y));
+                            Vector3 neighWorld = _obstacleMap.CellToWorld(new Vector3Int(neighborPos.x, 0, neighborPos.y));
+                            Debug.DrawLine(currWorld, neighWorld, Color.cyan, 2f);
                         }
                     }
                     else if (neighborNode.CostToCome(parent: currentNode) < neighborNode.GCost)
@@ -144,7 +145,9 @@ namespace PacMan.Agent.PathFinding
                         // Draw magenta lines if A* found a faster shortcut to an already explored node
                         if (DebugManager.Instance != null && DebugManager.Instance.aStar)
                         {
-                            Debug.DrawLine(currentNode.Position, neighborPos, Color.magenta, 2f);
+                            Vector3 currWorld = _obstacleMap.CellToWorld(new Vector3Int(currentNode.Position.x, 0, currentNode.Position.y));
+                            Vector3 neighWorld = _obstacleMap.CellToWorld(new Vector3Int(neighborPos.x, 0, neighborPos.y));
+                            Debug.DrawLine(currWorld, neighWorld, Color.magenta, 2f);
                         }
                     }
                 }
@@ -164,51 +167,56 @@ namespace PacMan.Agent.PathFinding
             public float GCost;
             private readonly float _hCost;
             public AStarNode Parent;
-            public readonly Vector3 Position;
+            public readonly Vector2Int Position;
+            private readonly ObstacleMapV2 _obstacleMap;
+            private readonly Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
 
-            /// <summary>
-            /// Initializes a new AStarNode with the given position. gCost and hCost are set to infinity by default, and parent is null.
-            /// </summary>
-            /// <param name="pos">The position of the node. </param>
-            public AStarNode(Vector3 pos, Vector3 goal, AStarNode parent=null)
+            public AStarNode(Vector2Int pos, Vector2Int goal, ObstacleMapV2 obstacleMap, 
+                Dictionary<Vector2Int, VoronoiCellData> voronoiMap, AStarNode parent=null)
             {
                 Position = pos;
                 Parent = parent;
+                _obstacleMap = obstacleMap;
+                _voronoiMap = voronoiMap;
 
                 GCost = CostToCome(parent: parent);
-
-                _hCost = Heuristic(goal:goal);
+                _hCost = Heuristic(goal: goal);
             }
-            
+    
             /// <summary>
-            /// Heuristic cost to go for the vehicle. 
+            /// Estimated distance to the goal. 
             /// </summary>
-            /// <param name="goal">The goal posiiton. </param>
-            /// <returns>The estimated cost to go. </returns>
-            private float Heuristic(Vector3 goal)
+            /// <param name="goal">The goal position. </param>
+            /// <returns>Euclidian distance to the goal. </returns>
+            private float Heuristic(Vector2Int goal)
             {
-                return Vector2.Distance(
-                    new Vector2(Position.x, Position.z), 
-                    new Vector2(goal.x, goal.z)
-                );
+                var goalWorld = _obstacleMap.CellToWorld(new Vector3Int(goal.x, 0, goal.y));
+                var currentWorld = _obstacleMap.CellToWorld(new Vector3Int(Position.x, 0, Position.y));
+                
+                return Vector3.Distance(goalWorld, currentWorld);
             }
 
-            /// <summary>
-            /// Cost to come (gCost) is calculated as the parent's gCost plus the distance from the parent to this node. If there is no parent, gCost is 0.
-            /// </summary>
-            /// <returns>The cost to come to this node from start. </returns>
             public float CostToCome(AStarNode parent)
             {
-                var cost = 0f;
+                if (parent == null) return 0f;
                 
-                if (parent != null)
+                // Calculate true step cost mimicking the precomputation step
+                Vector3 parentWorld = _obstacleMap.CellToWorld(new Vector3Int(parent.Position.x, 0, parent.Position.y));
+                Vector3 currentWorld = _obstacleMap.CellToWorld(new Vector3Int(Position.x, 0, Position.y));
+
+                var multiplier = 1f;
+                const float voronoiPenaltyMultiplier = 100f;
+                if (_voronoiMap != null && _voronoiMap.TryGetValue(Position, out var cellData))
                 {
-                    cost += parent.GCost + Vector3.Distance(parent.Position, Position);
+                    //If being able to be caught by the opponent
+                    if (!cellData.IsSafe)
+                    {
+                        multiplier = voronoiPenaltyMultiplier; 
+                    }
                 }
                 
-                return cost;
+                return parent.GCost + multiplier * Vector3.Distance(parentWorld, currentWorld);
             }
-            
 
             /// <summary>
             /// Switches the parent of this node to a new parent and updates the gCost accordingly. This is used when we find a better path to an existing node in the open set.
@@ -219,25 +227,8 @@ namespace PacMan.Agent.PathFinding
                 Parent = newParent;
                 GCost = CostToCome(parent:newParent);
             }
-            
-            
+    
             public float FCost => GCost + _hCost;
-        }
-        
-        
-        /// <summary>
-        /// Rounds a position to the nearest grid point based on the specified grid size. This helps to discretize the search space for A*.
-        /// </summary>
-        /// <param name="pos">The position we want to round. </param>
-        /// <param name="gridSize">The grid size. </param>
-        /// <returns>The rounded position. </returns>
-        private static Vector3 RoundToGrid(Vector3 pos, float gridSize)
-        {
-            return new Vector3(
-                Mathf.Round(pos.x / gridSize) * gridSize,
-                pos.y,
-                Mathf.Round(pos.z / gridSize) * gridSize
-            );
         }
         
         
@@ -246,17 +237,19 @@ namespace PacMan.Agent.PathFinding
         /// </summary>
         /// <param name="endNode">The end node. </param>
         /// <returns>The path to the end node. </returns>
-        private static List<Vector3> ReconstructPath(AStarNode endNode)
+        private List<Vector3> ReconstructPath(AStarNode endNode)
         {
             List<Vector3> path = new();
             var current = endNode;
-        
+
             while (current != null)
             {
-                path.Add(current.Position);
+                // Convert Vector2Int coordinates back to 3D Vector3 world coordinates
+                Vector3 worldPos = _obstacleMap.CellToWorld(new Vector3Int(current.Position.x, 0, current.Position.y));
+                path.Add(worldPos);
                 current = current.Parent;
             }
-        
+
             path.Reverse();
             return path;
         }
@@ -268,27 +261,20 @@ namespace PacMan.Agent.PathFinding
         /// <param name="pos">The node position we base the neighbors on. </param>
         /// <param name="gridSize">The grid size. </param>
         /// <returns>List of the neighbor positions. </returns>
-        private static List<Vector3> GetNeighbors(Vector3 pos, float gridSize)
+        private static List<Vector2Int> GetNeighbors(Vector2Int pos)
         {
-            List<Vector3> neighbors = new();
-    
+            List<Vector2Int> neighbors = new();
+
             for (var dx = -1; dx <= 1; dx++)
             {
-                for (var dz = -1; dz <= 1; dz++)
+                for (var dy = -1; dy <= 1; dy++)
                 {
-                    if (dx == 0 && dz == 0) continue;
-            
-                    var neighbor = new Vector3(
-                        pos.x + dx * gridSize,
-                        pos.y,
-                        pos.z + dz * gridSize
-                    );
-                    
-                    // Snap the neighbor to the grid immediately
-                    neighbors.Add(RoundToGrid(neighbor, gridSize));
+                    if (dx == 0 && dy == 0) continue;
+    
+                    neighbors.Add(new Vector2Int(pos.x + dx, pos.y + dy));
                 }
             }
-    
+
             return neighbors;
         }
         
@@ -298,11 +284,16 @@ namespace PacMan.Agent.PathFinding
         /// </summary>
         /// <param name="position">The position we want to check. </param>
         /// <returns>True if the position is traversable and false otherwise. </returns>
-        private bool IsTraversableAStar(Vector3 position)
+        private bool IsTraversableAStar(Vector2Int cellPos)
         {
-            if (_obstacleMap == null)
-                return false;
+            if (_obstacleMap == null) return false;
 
+            if (_obstacleMap.traversabilityPerCell.TryGetValue(cellPos, out var traversability))
+            {
+                return traversability == ObstacleMapV2.Traversability.Free;
+            }
+
+            return false; // Cell out of bounds
             if (_dynamicBlockedCells.Contains(ToCellKey(position)))
                 return false;
 
@@ -327,25 +318,19 @@ namespace PacMan.Agent.PathFinding
         /// <param name="gridSize"> Size of the grids </param>
         /// <param name="maxRadius"> Radius to check snap </param>
         /// <returns>True if the position is traversable and false otherwise. </returns>
-        private Vector3 FindNearestFreeCell(Vector3 origin, float gridSize, int maxRadius = 3)
+        private Vector2Int FindNearestFreeCell(Vector2Int origin, int maxRadius = 3)
         {
-            if (IsTraversableAStar(origin))
-                return origin;
+            if (IsTraversableAStar(origin)) return origin;
 
             for (var r = 1; r <= maxRadius; r++)
             {
                 for (var dx = -r; dx <= r; dx++)
                 {
-                    for (var dz = -r; dz <= r; dz++)
+                    for (var dy = -r; dy <= r; dy++)
                     {
-                        var candidate = new Vector3(
-                            origin.x + dx * gridSize,
-                            origin.y,
-                            origin.z + dz * gridSize
-                        );
+                        var candidate = new Vector2Int(origin.x + dx, origin.y + dy);
 
-                        if (IsTraversableAStar(candidate))
-                            return candidate;
+                        if (IsTraversableAStar(candidate)) return candidate;
                     }
                 }
             }

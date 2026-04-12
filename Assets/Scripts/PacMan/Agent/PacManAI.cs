@@ -10,8 +10,8 @@ using TMPro;
 using UnityEngine;
 using Scripts.Map;
 using PacMan.Agent.EnemyLocalization;
-using System.Reflection;
 using PacMan.Agent.RoleAssignment;
+using PacMan.Agent.Debugging;
 
 namespace PacMan.Agent
 {        
@@ -56,8 +56,6 @@ namespace PacMan.Agent
         [SerializeField] private bool _hasAttackAnchor = false;
         private MapMiddleAnalyzer _middleAnalyzer;
         private MapMiddleAnalyzer.MiddleInfo _middleInfo;
-        [SerializeField] private bool drawMiddle = true;
-        [SerializeField] private bool drawAstar = true;
         [Header("Attack Patrol")]
         [SerializeField] private int attackPatrolSwitchSteps = 30;
         [SerializeField] private float attackPatrolOffset = 1.0f;
@@ -83,6 +81,12 @@ namespace PacMan.Agent
         private AgentMode _currentMode;
         private AgentMode _previousMode;
         private bool _visualizerLinked = false;
+        
+        private VoronoiPartitioning _voronoiPartitioning;
+        private Dictionary<Vector2Int, VoronoiCellData> _currentVoronoi;
+        
+        // To track respawns
+        private int _previousRespawnStep = -1;
         private int _lastPathPlanStep = -99999;
         private int _lastKnownRespawnStep = -1;
         private bool _attackerThreatRetreatActive = false;
@@ -134,7 +138,13 @@ namespace PacMan.Agent
             _agent = GetComponent<PacManAgentManager>();
             _mapManager = mapManager;
             var gridSize = 0.2f;
-            _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize), new Vector3(1f, 1f, 1f));
+            _obstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(gridSize, 1f, gridSize));
+            
+            //Make all the classes have the same obstacle map
+            if (EnemyTrackerManager.Instance != null) EnemyTrackerManager.Instance.SetObstacleMap(_obstacleMap);
+            if (RoleAssigner.Instance != null) RoleAssigner.Instance.SetObstacleMap(_obstacleMap);
+            
+            
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
             _hasGoal = false;
             _defenderTree = DefenderTreeFactory.Create();
@@ -151,6 +161,10 @@ namespace PacMan.Agent
             var groundCollider = groundPlane.GetComponent<Collider>();
             RoleAssigner.Instance?.RegisterAgent(this);
             
+            // Set the initial respawn step
+            if (_agent != null) _previousRespawnStep = _agent.GetLastRespawnStep();
+            
+            _voronoiPartitioning = new VoronoiPartitioning(_obstacleMap);
         }
 
         private void OnDisable()
@@ -160,6 +174,15 @@ namespace PacMan.Agent
 
         public override PacManAction Tick()
         {
+            // Respawn Detection
+            var currentRespawnStep = _agent.GetLastRespawnStep();
+            if (currentRespawnStep != _previousRespawnStep)
+            {
+                // The agent just died and respawned. Reset the path!
+                ClearCurrentPath();
+                _previousRespawnStep = currentRespawnStep;
+            }
+            
             _agent.GetTimeRemaining();
             _agent.GetScore();
 
@@ -249,57 +272,7 @@ namespace PacMan.Agent
                     return BTDecision.Running(AgentMode.Patrol, "NoRole");
             }
         }
-        private Vector2 GetAttackAcceleration(List<GameObject> activeFoodPositions)
-        {
-            // 1. VALIDATE EXISTING GOAL
-            if (_hasGoal)
-            {
-                // Condition A: Did we reach the goal?
-                if (Vector3.Distance(transform.localPosition, _goalPosition) < 0.2f)
-                {
-                    _hasGoal = false;
-                }
-                // Condition B: Was our targeted food eaten by someone else?
-                else if (_currentFoodTarget != null && !_currentFoodTarget.activeSelf)
-                {
-                    _hasGoal = false;
-                }
-            }
-            
-            // FIND NEW GOAL IF NEEDED
-            if (!_hasGoal)
-            {
-                var gf = new GoalFinding(agent: _agent);
-                var closestFood = gf.GetClosestEatableFood(activeFoodPositions, debug: true);
-                _goalPosition = closestFood;
-
-                // Map the returned Vector3 back to the actual GameObject so we can track if it gets deactivated
-                _currentFoodTarget = activeFoodPositions.FirstOrDefault(f => f.transform.position == closestFood);
-                
-                bool pathOk = MakePath();
-
-                if (!pathOk)
-                {
-                    _hasGoal = false;
-                    return Vector2.zero;
-                }
-
-                _hasGoal = true;
-            }
-
-            if (_droneControlling == null || _initialDroneState == null)
-            {
-                _hasGoal = false;
-                return Vector2.zero;
-            }
-
-            _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
-
-            var x = _droneControlling.h;
-            var z = _droneControlling.v;
-
-            return new Vector2(x, z);
-        }
+        
 
         private Vector2 GetReturnHomeAcceleration()
         {
@@ -436,18 +409,24 @@ namespace PacMan.Agent
                 var intendedH = dir.x;
                 var intendedV = dir.z;
                 
-                var vo = new VO(transform, maxAcceleration:15f, false);
+                var vo = new VO(transform, maxAcceleration:15f);
 
                 float x;
                 float z;
 
-                // Select the GameObject from each manager and convert the result to an array
-                var otherDrones = visibleEnemies.Select(agent => agent.gameObject).ToArray();
+                // Friends + power pill
+                var lowRiskObstacles = _agent.GetFriendlyAgents().Where(a => a != _agent) // Exclude self
+                    .Select(agent => agent.gameObject)
+                    .ToList();
+                var powerPills = _agent.GetCapsuleObjects();
+                lowRiskObstacles.AddRange(powerPills);
                 var obstacles = Physics.OverlapSphere(transform.position, 20f, LayerMask.GetMask("Obstacle"));
-
+            
+                var enemyGhosts = _agent.GetVisibleEnemyAgents().Where(a => a.IsGhost())
+                    .Select(e => e.gameObject).ToList();
                 
                 (x, z) = vo.GetSafeAcceleration(myTransform: transform, currentVelocity: velocity, 
-                    intendedH:intendedH, intendedV:intendedV, otherDrones:otherDrones, 
+                    intendedH:intendedH, intendedV:intendedV, highRiskDrones:enemyGhosts, lowRiskDrones:lowRiskObstacles,
                     staticObstacles:obstacles);
                 
                 return new Vector2(x, z);
@@ -539,6 +518,9 @@ namespace PacMan.Agent
             //     $"hasDefenseAnchor={_hasDefenseAnchor} | defenseAnchor={_defenseAnchor}"
             // );
 
+            UpdateVoronoiData();
+            
+            Astar aStar = new Astar(_obstacleMap);
             bool enforceOwnTerritoryPath =
                 ownTerritoryOnly &&
                 IsInOwnTerritory(curPos) &&
@@ -577,6 +559,34 @@ namespace PacMan.Agent
             _lastPathPlanStep = _agent.GetStepsSinceMatchStart();
             return true;
         }
+        
+        
+        private void UpdateVoronoiData()
+        {
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+    
+            if (visibleEnemies == null || visibleEnemies.Count == 0)
+            {
+                _currentVoronoi = null;
+                return;
+            }
+
+            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+            bool isOnOpponentSide = isBlue ? transform.localPosition.x > 0 : transform.localPosition.x < 0; 
+
+            if (isOnOpponentSide)
+            {
+                var enemyPositions = visibleEnemies.Select(e => e.transform.position).ToList();
+        
+                // Pass the agent's position to act as the "Safe" source
+                _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions);
+            }
+            else
+            {
+                _currentVoronoi = null;
+            }
+        }
+        
 
         private DefenderBlackboard BuildDefenderBlackboard()
         {
@@ -1221,8 +1231,43 @@ namespace PacMan.Agent
             }
 
             _droneControlling.PDCalculateMove(droneTransform: _initialDroneState);
-            return new Vector2(_droneControlling.h, _droneControlling.v);
+
+            var moveVector = GetSafeAcceleration();
+                
+            return moveVector;
         }
+
+
+        /// <summary>
+        /// Returns a safe acceleration based on the _droneControlling output, surrounding obstacles and
+        /// other things based on if the agent is ghost or pacman. 
+        /// </summary>
+        /// <returns></returns>
+        private Vector2 GetSafeAcceleration()
+        {
+            var vo = new VO(transform, maxAcceleration:15f);
+            
+            // Friends + power pill
+            var lowRiskObstacles = _agent.GetFriendlyAgents().Where(a => a != _agent) // Exclude self
+                .Select(agent => agent.gameObject)
+                .ToList();
+            var powerPills = _agent.GetCapsuleObjects();
+            lowRiskObstacles.AddRange(powerPills);
+            var obstacles = Physics.OverlapSphere(transform.position, 20f, LayerMask.GetMask("Obstacle"));
+            
+            var enemyGhosts = _agent.GetVisibleEnemyAgents().Where(a => a.IsGhost())
+                .Select(e => e.gameObject).ToList();
+            
+            float safeH;
+            float safeV;
+            (safeH,safeV) = vo.GetSafeAcceleration(myTransform:transform, currentVelocity:_agent.GetVelocity(), 
+                intendedH:_droneControlling.h, intendedV:_droneControlling.v,highRiskDrones:enemyGhosts, 
+                lowRiskDrones:lowRiskObstacles, staticObstacles:obstacles);
+            
+            return new Vector2(safeH, safeV);
+        }
+        
+        
         private Vector2 ExecuteInterceptIntruder(BTDecision decision)
         {
             if (decision == null || !decision.HasTarget)
@@ -1410,7 +1455,7 @@ namespace PacMan.Agent
         private void OnDrawGizmos()
         {
             MapEditing.DrawObstacleMap(transform, _obstacleMap, drawObstacleMap);
-            if (drawAstar)
+            if (DebugManager.Instance != null && DebugManager.Instance.path)
             {
                 if (_waypoints != null && _waypoints.Count > 0)
                 {
@@ -1426,23 +1471,28 @@ namespace PacMan.Agent
                     Vector3 lastPos = new Vector3(_waypoints[_waypoints.Count - 1].position.x, transform.position.y, _waypoints[_waypoints.Count - 1].position.y);
                     Gizmos.DrawSphere(lastPos, 0.15f);
                 }
+                
+                if (_droneControlling != null && _initialDroneState != null)
+                {
+                    Gizmos.color = Color.yellow;
+                    Gizmos.DrawSphere(
+                        new Vector3(_droneControlling.closestPoint.x, _initialDroneState.position.y,
+                            _droneControlling.closestPoint.y), 0.2f);
+                    Gizmos.color = Color.blue;
+                    Gizmos.DrawSphere(
+                        new Vector3(_droneControlling.targetPoint.x, _initialDroneState.position.y,
+                            _droneControlling.targetPoint.y), 0.2f);
+                }
             }
 
-            if (_droneControlling != null && _initialDroneState != null)
-            {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawSphere(
-                    new Vector3(_droneControlling.closestPoint.x, _initialDroneState.position.y,
-                        _droneControlling.closestPoint.y), 0.2f);
-                Gizmos.color = Color.blue;
-                Gizmos.DrawSphere(
-                    new Vector3(_droneControlling.targetPoint.x, _initialDroneState.position.y,
-                        _droneControlling.targetPoint.y), 0.2f);
-            }
-
-            if (drawMiddle)
+            if (DebugManager.Instance != null && DebugManager.Instance.middle)
             {
                 DrawMiddleGizmos();
+            }
+            
+            if (_voronoiPartitioning != null && _currentVoronoi != null)
+            {
+                _voronoiPartitioning.DrawVoronoiDebug(_currentVoronoi);
             }
         }
         private void DrawMiddleGizmos()

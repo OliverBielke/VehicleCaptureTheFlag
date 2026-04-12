@@ -123,8 +123,6 @@ MonoBehaviour:
   _hasDefenseAnchor: 0
   _attackAnchor: {x: 0, y: 0, z: 0}
   _hasAttackAnchor: 0
-  drawMiddle: 0
-  drawAstar: 1
   attackPatrolSwitchSteps: 30
   attackPatrolOffset: 1
   attackPatrolArriveDistance: 0.15

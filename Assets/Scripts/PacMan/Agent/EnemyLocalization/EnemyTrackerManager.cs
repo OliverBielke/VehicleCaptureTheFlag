@@ -4,6 +4,7 @@ using UnityEngine;
 using PacMan.Local;
 using PacMan.Interface.PacMan;
 using Scripts.Map;
+using PacMan.Agent.Debugging;
 
 namespace PacMan.Agent.EnemyLocalization
 {
@@ -39,7 +40,6 @@ namespace PacMan.Agent.EnemyLocalization
         [SerializeField] private bool autoFindTrackingSource = true;
 
         [Header("Debug")]
-        [SerializeField] private bool drawDebug = true;
         [SerializeField] private float particleRadius = 0.05f;
         [SerializeField] private float estimateRadius = 0.2f;
         [SerializeField] private bool logTrackingSource = false;
@@ -112,32 +112,17 @@ namespace PacMan.Agent.EnemyLocalization
 
             _pfBounds = new Bounds(boundsCenter, boundsSize);
 
-            if (mapManager == null)
-            {
-                mapManager = FindFirstObjectByType<MapManager>();
-            }
-
-            if (mapManager != null)
-            {
-                _obstacleMap = ObstacleMapV2.Initialize(
-                    mapManager,
-                    new List<GameObject>(),
-                    new Vector3(0.2f, 1f, 0.2f),
-                    new Vector3(1f, 1f, 1f),
-                    0
-                );
-
-                _isTraversable = IsTraversable;
-            }
-            else
-            {
-                _isTraversable = null;
-            }
-
             _enemyFilters.Clear();
             _trackStates.Clear();
             _knownFoodActiveStates.Clear();
             _initialized = true;
+        }
+        
+        // Used in PacManAI to set the same Obstacle Map for all classes
+        public void SetObstacleMap(ObstacleMapV2 map)
+        {
+            _obstacleMap = map;
+            _isTraversable = IsTraversable;
         }
 
         private void RefreshTrackingSource()
@@ -664,7 +649,7 @@ namespace PacMan.Agent.EnemyLocalization
 
         private void OnDrawGizmos()
         {
-            if (!drawDebug)
+            if (DebugManager.Instance == null || !DebugManager.Instance.enemyLocalization)
                 return;
 
             Gizmos.color = Color.white;
