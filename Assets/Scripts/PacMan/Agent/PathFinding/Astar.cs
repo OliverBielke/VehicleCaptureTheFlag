@@ -13,6 +13,7 @@ namespace PacMan.Agent.PathFinding
         private readonly List<Vector3> _astarExploredNodes = new();
         private readonly HashSet<Vector2Int> _dynamicBlockedCells;
         private readonly System.Func<Vector3, bool> _additionalTraversability;
+        private Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
         
         public Astar(
             ObstacleMapV2 obstacleMap,
@@ -97,7 +98,7 @@ namespace PacMan.Agent.PathFinding
                 openSet.Remove(currentNode);
                 closedSet.Add(currentNode.Position);
                 
-                _astarExploredNodes.Add(currentNode.Position);
+                _astarExploredNodes.Add(_obstacleMap.CellToWorld(new Vector3Int(currentNode.Position.x, 0, currentNode.Position.y)));
                 
                 // Check if we hit the exact goal cell
                 if (currentNode.Position == goalCell) 
@@ -286,7 +287,15 @@ namespace PacMan.Agent.PathFinding
         /// <returns>True if the position is traversable and false otherwise. </returns>
         private bool IsTraversableAStar(Vector2Int cellPos)
         {
-            if (_obstacleMap == null) return false;
+            if (_obstacleMap == null)
+                return false;
+
+            if (_dynamicBlockedCells.Contains(cellPos))
+                return false;
+
+            Vector3 worldPosition = _obstacleMap.CellToWorld(new Vector3Int(cellPos.x, 0, cellPos.y));
+            if (_additionalTraversability != null && !_additionalTraversability(worldPosition))
+                return false;
 
             if (_obstacleMap.traversabilityPerCell.TryGetValue(cellPos, out var traversability))
             {
@@ -294,13 +303,6 @@ namespace PacMan.Agent.PathFinding
             }
 
             return false; // Cell out of bounds
-            if (_dynamicBlockedCells.Contains(ToCellKey(position)))
-                return false;
-
-            if (_additionalTraversability != null && !_additionalTraversability(position))
-                return false;
-
-            return _obstacleMap.GetLocalPointTraversibility(position) == ObstacleMapV2.Traversability.Free;
         }
 
         private Vector2Int ToCellKey(Vector3 localPosition)
