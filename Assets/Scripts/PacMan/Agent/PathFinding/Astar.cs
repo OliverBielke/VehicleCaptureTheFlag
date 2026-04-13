@@ -10,12 +10,28 @@ namespace PacMan.Agent.PathFinding
     public class Astar
     {
         private readonly ObstacleMapV2 _obstacleMap;
-        private readonly List<Vector2Int> _astarExploredNodes = new();
+        private readonly List<Vector3> _astarExploredNodes = new();
+        private readonly HashSet<Vector2Int> _dynamicBlockedCells;
+        private readonly System.Func<Vector3, bool> _additionalTraversability;
         private Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
         
-        public Astar(ObstacleMapV2 obstacleMap)
+        public Astar(
+            ObstacleMapV2 obstacleMap,
+            IEnumerable<Vector3> dynamicBlockedPositions = null,
+            System.Func<Vector3, bool> additionalTraversability = null)
         {
             _obstacleMap = obstacleMap;
+            _dynamicBlockedCells = new HashSet<Vector2Int>();
+            _additionalTraversability = additionalTraversability;
+
+            if (dynamicBlockedPositions == null || _obstacleMap == null)
+                return;
+
+            foreach (var position in dynamicBlockedPositions)
+            {
+                var cell = ToCellKey(position);
+                _dynamicBlockedCells.Add(cell);
+            }
         }
 
         /// <summary>
@@ -82,7 +98,7 @@ namespace PacMan.Agent.PathFinding
                 openSet.Remove(currentNode);
                 closedSet.Add(currentNode.Position);
                 
-                _astarExploredNodes.Add(currentNode.Position);
+                _astarExploredNodes.Add(_obstacleMap.CellToWorld(new Vector3Int(currentNode.Position.x, 0, currentNode.Position.y)));
                 
                 // Check if we hit the exact goal cell
                 if (currentNode.Position == goalCell) 
@@ -271,7 +287,15 @@ namespace PacMan.Agent.PathFinding
         /// <returns>True if the position is traversable and false otherwise. </returns>
         private bool IsTraversableAStar(Vector2Int cellPos)
         {
-            if (_obstacleMap == null) return false;
+            if (_obstacleMap == null)
+                return false;
+
+            if (_dynamicBlockedCells.Contains(cellPos))
+                return false;
+
+            Vector3 worldPosition = _obstacleMap.CellToWorld(new Vector3Int(cellPos.x, 0, cellPos.y));
+            if (_additionalTraversability != null && !_additionalTraversability(worldPosition))
+                return false;
 
             if (_obstacleMap.traversabilityPerCell.TryGetValue(cellPos, out var traversability))
             {
@@ -279,6 +303,14 @@ namespace PacMan.Agent.PathFinding
             }
 
             return false; // Cell out of bounds
+        }
+
+        private Vector2Int ToCellKey(Vector3 localPosition)
+        {
+            var cellPos = Vector3Int.FloorToInt(Vector3.Scale(
+                localPosition,
+                new Vector3(1 / _obstacleMap.trueScale.x, 1 / _obstacleMap.trueScale.y, 1 / _obstacleMap.trueScale.z)));
+            return new Vector2Int(cellPos.x, cellPos.z);
         }
 
         /// <summary>

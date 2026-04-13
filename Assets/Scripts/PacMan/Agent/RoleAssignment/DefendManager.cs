@@ -53,6 +53,9 @@ namespace PacMan.Agent.RoleAssignment
                     if (enemy == null || !enemy.HasPosition || enemy.IsGhost)
                         continue;
 
+                    if (!IsIntrudingIntoTeamTerritory(team, enemy.Position))
+                        continue;
+
                     if (!trackedIntruders.TryGetValue(enemy.ServerIndex, out var current))
                     {
                         trackedIntruders[enemy.ServerIndex] = new Assignment
@@ -115,6 +118,19 @@ namespace PacMan.Agent.RoleAssignment
 
             float laneDelta = Mathf.Abs(defender.DefenseAnchor.z - intruderPosition.z);
             return distanceScore + laneDelta * laneDelta * 0.35f;
+        }
+
+        private static bool IsIntrudingIntoTeamTerritory(Team defendingTeam, Vector3 enemyPosition)
+        {
+            const float midlineBuffer = 0.3f;
+
+            if (defendingTeam == Team.Blue)
+                return enemyPosition.x < midlineBuffer;
+
+            if (defendingTeam == Team.Red)
+                return enemyPosition.x > -midlineBuffer;
+
+            return false;
         }
     }
 }

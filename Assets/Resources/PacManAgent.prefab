@@ -126,6 +126,32 @@ MonoBehaviour:
   attackPatrolSwitchSteps: 30
   attackPatrolOffset: 1
   attackPatrolArriveDistance: 0.15
+  lateGameCapsuleRushSeconds: 45
+  poweredReturnFoodThreshold: 6
+  nextCapsuleGrabLeadTime: 0.15
+  staleEnemyCapsuleIgnoreSteps: 30
+  staleEnemyCapsuleIgnoreRadius: 1
+  returnHomeOwnSideOffset: 1.2
+  returnHomeReleaseOwnSideDistance: 1.2
+  friendlyCapsuleObstacleInflation: 1
+  baseGhostDangerDistance: 2.5
+  maxGhostDangerDistance: 6
+  ghostDangerHysteresisDistance: 1
+  defenderPurePursuitSwitchDistance: 2
+  minStepsBetweenRepaths: 12
+  retargetDistanceThreshold: 0.75
+  targetLockDistance: 0.35
+  pillRepathIntervalSteps: 35
+  pillUnsafeCellRetryThreshold: 6
+  pillCandidateAttempts: 1
+  capsuleRepathIntervalSteps: 35
+  teammateYieldDetectDistance: 0.75
+  teammateYieldBackoffSteps: 8
+  teammateYieldObstacleSteps: 20
+  teammateYieldRetriggerCooldownSteps: 12
+  teammateYieldGoalIgnoreRadius: 0.5
+  teammateYieldObstacleInflation: 1
+  teammateYieldSettledTargetDistance: 0.45
 --- !u!114 &6052309846596243798
 MonoBehaviour:
   m_ObjectHideFlags: 0

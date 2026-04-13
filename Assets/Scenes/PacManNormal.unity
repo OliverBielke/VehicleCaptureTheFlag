@@ -23964,6 +23964,9 @@ MonoBehaviour:
   particleRadius: 0.05
   estimateRadius: 0.2
   logTrackingSource: 0
+  mapManager: {fileID: 0}
+  useFriendlyFoodDisappearEvidence: 1
+  foodTheftObservationDispersion: 0.2
 --- !u!4 &823461054
 Transform:
   m_ObjectHideFlags: 0
@@ -38253,7 +38256,7 @@ MonoBehaviour:
   matchLength: 240
   finished: 0
   agentsPerTeam: 0
-  teamName: 
+  teamName: '#1'
   agents: []
   redAgents: []
   blueAgents: []
@@ -45699,8 +45702,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RoleAssigner
   gridSize: 0.2
   useMajorLanesOnlyForDefense: 1
+  singleDefenderAnchorOffset: 2
+  multiDefenderAnchorOffset: 2
   settleTime: 0.2
   verboseLogs: 1
+  attackLaneSwitchInterval: 10
+  smallerLaneBias: 0.7
+  laneRandomJitter: 0.35
 --- !u!4 &1445745587
 Transform:
   m_ObjectHideFlags: 0

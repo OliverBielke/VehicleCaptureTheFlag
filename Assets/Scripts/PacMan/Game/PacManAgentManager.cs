@@ -329,6 +329,20 @@ namespace PacMan.Local
                    TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue && PacManGameManager.redAgents[0].GetComponent<PacManAgentManager>().IsScared();
         }
 
+        public float GetPowerRemainingDuration()
+        {
+            if (PacManGameManager == null)
+                return 0f;
+
+            if (TeamAssignmentUtil.CheckTeam(gameObject) == Team.Red && PacManGameManager.blueAgents.Count > 0)
+                return PacManGameManager.blueAgents[0].GetComponent<PacManAgentManager>().GetScaredRemainingDuration();
+
+            if (TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue && PacManGameManager.redAgents.Count > 0)
+                return PacManGameManager.redAgents[0].GetComponent<PacManAgentManager>().GetScaredRemainingDuration();
+
+            return 0f;
+        }
+
         public float GetScaredRemainingDuration()
         {
             return (float)(scaredUntil - GetSimulationTime());

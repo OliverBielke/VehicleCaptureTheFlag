@@ -26,7 +26,6 @@ namespace PacMan.Agent.PathFollowing
         // State tracking
         public List<Node> waypoints { get; set; }
         public Vector3 goal { get; set; }
-        public Vector3 prevDronePos { get; set; }
         public Transform currDroneState { get; set; }
     
         // Path tracking
@@ -42,7 +41,6 @@ namespace PacMan.Agent.PathFollowing
         {
             this.waypoints = waypoints;
             this.goal = goal;
-            prevDronePos = droneState.position;  
             currDroneState = droneState;       
             bestStartIndex = 0;
             targetDistance = 0.5f;
@@ -63,11 +61,10 @@ namespace PacMan.Agent.PathFollowing
     
             var targetPoint = GetTargetPoint(droneTransform.position);
             var currentPos2D = new Vector2(droneTransform.position.x, droneTransform.position.z);
-    
-            var currentVel = new Vector2(
-                (droneTransform.position.x - prevDronePos.x) / Time.fixedDeltaTime,
-                (droneTransform.position.z - prevDronePos.z) / Time.fixedDeltaTime
-            );
+
+            var rigidBody = droneTransform.GetComponent<Rigidbody>();
+            Vector3 linearVelocity = rigidBody != null ? rigidBody.linearVelocity : Vector3.zero;
+            var currentVel = new Vector2(linearVelocity.x, linearVelocity.z);
             
             var targetSpeed = GetTargetSpeed(closestPoint, bestStartIndex, waypoints);
             var targetDir = (targetPoint - currentPos2D).normalized;
@@ -93,7 +90,6 @@ namespace PacMan.Agent.PathFollowing
 
             lastVelError = velocityError;
             lastPosError = positionError;
-            prevDronePos = droneTransform.position;
             }
         
         private float GetMinTargetSpeed(int index, List<Node> path)
@@ -199,7 +195,8 @@ namespace PacMan.Agent.PathFollowing
         
         private void UpdateTargetDistance()
         {
-            float currentSpeed = Vector3.Distance(this.currDroneState.position, this.prevDronePos) / Time.fixedDeltaTime;
+            var rigidBody = this.currDroneState != null ? this.currDroneState.GetComponent<Rigidbody>() : null;
+            float currentSpeed = rigidBody != null ? rigidBody.linearVelocity.magnitude : 0f;
             targetDistance = Mathf.Clamp(currentSpeed / 2f, 1f, 2f);
         }
 
@@ -243,8 +240,12 @@ namespace PacMan.Agent.PathFollowing
         {
             Vector2 closestPointPath = new Vector2(0f, 0f);
             float closestDistance = float.MaxValue;
-            int bestIndex = 0;
-            for (int i = 0; i < this.waypoints.Count - 1; i++)
+            int segmentCount = this.waypoints.Count - 1;
+            int searchStart = Mathf.Clamp(this.bestStartIndex, 0, Mathf.Max(0, segmentCount - 1));
+            int searchEnd = Mathf.Min(segmentCount - 1, searchStart + 6);
+            int bestIndex = searchStart;
+
+            for (int i = searchStart; i <= searchEnd; i++)
             {
                 Node start = this.waypoints[i];
                 Node end = this.waypoints[i + 1];
@@ -256,6 +257,24 @@ namespace PacMan.Agent.PathFollowing
                     closestPointPath = closestPointLine;
                     closestDistance = distance;
                     bestIndex = i;
+                }
+            }
+
+            if (closestDistance == float.MaxValue)
+            {
+                for (int i = 0; i < segmentCount; i++)
+                {
+                    Node start = this.waypoints[i];
+                    Node end = this.waypoints[i + 1];
+                    Vector2 closestPointLine = GetClosestPointToLine(start.position, end.position,
+                        new Vector2(currentPosition.x, currentPosition.z));
+                    float distance = Vector2.Distance(closestPointLine, new Vector2(currentPosition.x, currentPosition.z));
+                    if (distance < closestDistance && !CollisionCheck(closestPointLine, currentPosition))
+                    {
+                        closestPointPath = closestPointLine;
+                        closestDistance = distance;
+                        bestIndex = i;
+                    }
                 }
             }
 

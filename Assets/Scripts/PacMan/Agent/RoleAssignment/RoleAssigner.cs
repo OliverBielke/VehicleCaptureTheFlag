@@ -15,10 +15,17 @@ namespace PacMan.Agent.RoleAssignment
         [Header("Map Analysis")]
         [SerializeField] private float gridSize = 0.2f;
         [SerializeField] private bool useMajorLanesOnlyForDefense = true;
+        [SerializeField] private float singleDefenderAnchorOffset = 2f;
+        [SerializeField] private float multiDefenderAnchorOffset = 2f;
 
         [Header("Timing")]
         [SerializeField] private float settleTime = 0.5f;
         [SerializeField] private bool verboseLogs = true;
+
+        [Header("Attack Pressure")]
+        [SerializeField] private float attackLaneSwitchInterval = 10f;
+        [SerializeField] [Range(0f, 1f)] private float smallerLaneBias = 0.7f;
+        [SerializeField] [Range(0f, 2f)] private float laneRandomJitter = 0.35f;
 
         private readonly List<PacManAIDebugBT> _registeredAgents = new();
         private ObstacleMapV2 _obstacleMap;
@@ -28,6 +35,7 @@ namespace PacMan.Agent.RoleAssignment
         private AttackManager _attackManager;
 
         private Coroutine _assignCoroutine;
+        private float _nextAttackLaneSwitchTime;
         public DefendManager DefendManager => _defendManager;
         public AttackManager AttackManager => _attackManager;
 
@@ -56,9 +64,19 @@ namespace PacMan.Agent.RoleAssignment
             _middleInfo = _middleAnalyzer.Analyze();
             _defendManager = new DefendManager(this);
             _attackManager = new AttackManager(this);
+            _nextAttackLaneSwitchTime = Time.time + attackLaneSwitchInterval;
 
             if (verboseLogs)
                 Debug.Log($"RoleAssigner: initialized. Lane count = {_middleInfo.LaneCount}");
+        }
+
+        private void Update()
+        {
+            if (attackLaneSwitchInterval <= 0f || Time.time < _nextAttackLaneSwitchTime)
+                return;
+
+            _nextAttackLaneSwitchTime = Time.time + attackLaneSwitchInterval;
+            RefreshAttackAnchorsForRegisteredTeams();
         }
 
         public void RegisterAgent(PacManAIDebugBT agent)
@@ -201,7 +219,7 @@ namespace PacMan.Agent.RoleAssignment
                 Team team = TeamAssignmentUtil.CheckTeam(defender.gameObject);
 
                 var middleLane = availableLanes[availableLanes.Count / 2];
-                Vector3 anchor = GetDefenseAnchorForLane(middleLane, team, 2f);
+                Vector3 anchor = GetDefenseAnchorForLane(middleLane, team, singleDefenderAnchorOffset);
 
                 defender.SetDefenseAnchor(anchor);
                 Debug.Log($"{defender.name} defense anchor -> {anchor} | lane={middleLane.Label}");
@@ -220,10 +238,10 @@ namespace PacMan.Agent.RoleAssignment
                 Team t0 = TeamAssignmentUtil.CheckTeam(d0.gameObject);
                 Team t1 = TeamAssignmentUtil.CheckTeam(d1.gameObject);
 
-                Vector3 d0BottomAnchor = GetDefenseAnchorForLane(bottomLane, t0, 2f);
-                Vector3 d0TopAnchor = GetDefenseAnchorForLane(topLane, t0, 2f);
-                Vector3 d1BottomAnchor = GetDefenseAnchorForLane(bottomLane, t1, 2f);
-                Vector3 d1TopAnchor = GetDefenseAnchorForLane(topLane, t1, 2f);
+                Vector3 d0BottomAnchor = GetDefenseAnchorForLane(bottomLane, t0, multiDefenderAnchorOffset);
+                Vector3 d0TopAnchor = GetDefenseAnchorForLane(topLane, t0, multiDefenderAnchorOffset);
+                Vector3 d1BottomAnchor = GetDefenseAnchorForLane(bottomLane, t1, multiDefenderAnchorOffset);
+                Vector3 d1TopAnchor = GetDefenseAnchorForLane(topLane, t1, multiDefenderAnchorOffset);
 
                 float pairingA =
                     (d0.transform.localPosition - d0BottomAnchor).sqrMagnitude +
@@ -262,7 +280,7 @@ namespace PacMan.Agent.RoleAssignment
 
                 foreach (var lane in availableLanes)
                 {
-                    Vector3 candidateAnchor = GetDefenseAnchorForLane(lane, team, 2f);
+                    Vector3 candidateAnchor = GetDefenseAnchorForLane(lane, team, multiDefenderAnchorOffset);
                     float distSqr = (defender.transform.localPosition - candidateAnchor).sqrMagnitude;
                     assignments.Add((defender, lane, distSqr));
                 }
@@ -277,7 +295,7 @@ namespace PacMan.Agent.RoleAssignment
                     continue;
 
                 Team team = TeamAssignmentUtil.CheckTeam(candidate.defender.gameObject);
-                Vector3 anchor = GetDefenseAnchorForLane(candidate.lane, team, 2f);
+                Vector3 anchor = GetDefenseAnchorForLane(candidate.lane, team, multiDefenderAnchorOffset);
 
                 candidate.defender.SetDefenseAnchor(anchor);
                 usedDefenders.Add(candidate.defender);
@@ -297,12 +315,12 @@ namespace PacMan.Agent.RoleAssignment
                 var closestLane = availableLanes
                     .OrderBy(l =>
                     {
-                        Vector3 anchor = GetDefenseAnchorForLane(l, team, 2f);
+                        Vector3 anchor = GetDefenseAnchorForLane(l, team, multiDefenderAnchorOffset);
                         return (defender.transform.localPosition - anchor).sqrMagnitude;
                     })
                     .First();
 
-                Vector3 fallbackAnchor = GetDefenseAnchorForLane(closestLane, team, 2f);
+                Vector3 fallbackAnchor = GetDefenseAnchorForLane(closestLane, team, multiDefenderAnchorOffset);
                 defender.SetDefenseAnchor(fallbackAnchor);
 
                 Debug.Log($"{defender.name} fallback defense anchor -> {fallbackAnchor} | lane={closestLane.Label}");
@@ -341,6 +359,105 @@ namespace PacMan.Agent.RoleAssignment
                 if (verboseLogs)
                     Debug.Log($"{attacker.name} attack anchor -> {attackAnchor} | lane={orderedLanes[laneIndex].Label}");
             }
+        }
+
+        private void RefreshAttackAnchorsForRegisteredTeams()
+        {
+            var validAttackers = _registeredAgents
+                .Where(agent =>
+                    agent != null &&
+                    agent.gameObject != null &&
+                    agent.isActiveAndEnabled &&
+                    agent.AssignedRole == StaticRole.Attack)
+                .GroupBy(agent => TeamAssignmentUtil.CheckTeam(agent.gameObject));
+
+            foreach (var teamGroup in validAttackers)
+            {
+                if (teamGroup.Key == Team.Undefined)
+                    continue;
+
+                ReassignAttackPressureLanes(teamGroup.ToList());
+            }
+        }
+
+        private void ReassignAttackPressureLanes(List<PacManAIDebugBT> attackers)
+        {
+            if (attackers == null || attackers.Count == 0)
+                return;
+
+            var orderedLanes = MapMiddleAnalyzer.GetLanesOrdered(_middleInfo);
+            if (orderedLanes == null || orderedLanes.Count == 0)
+                return;
+
+            var selectedLanes = SelectPressureLanes(orderedLanes, attackers.Count);
+            var attackerOrder = attackers
+                .OrderBy(attacker => attacker.transform.localPosition.z)
+                .ToList();
+
+            var laneOrder = selectedLanes
+                .OrderBy(lane => lane.MidCenterLocal.z)
+                .ToList();
+
+            for (int i = 0; i < attackerOrder.Count; i++)
+            {
+                var attacker = attackerOrder[i];
+                var lane = laneOrder[Mathf.Min(i, laneOrder.Count - 1)];
+                Team team = TeamAssignmentUtil.CheckTeam(attacker.gameObject);
+                Vector3 attackAnchor = GetAttackAnchorForLane(lane, team, 1f);
+                attacker.SetAttackAnchor(attackAnchor);
+
+                if (verboseLogs)
+                    Debug.Log($"{attacker.name} switched attack lane -> {attackAnchor} | lane={lane.Label} | width={lane.WidthCells}");
+            }
+        }
+
+        private List<MapMiddleAnalyzer.Lane> SelectPressureLanes(List<MapMiddleAnalyzer.Lane> orderedLanes, int attackerCount)
+        {
+            var selected = new List<MapMiddleAnalyzer.Lane>();
+            if (orderedLanes == null || orderedLanes.Count == 0 || attackerCount <= 0)
+                return selected;
+
+            var available = new List<MapMiddleAnalyzer.Lane>(orderedLanes);
+            int maxWidth = Mathf.Max(1, available.Max(lane => lane.WidthCells));
+
+            while (selected.Count < attackerCount && available.Count > 0)
+            {
+                float totalWeight = 0f;
+                var weights = new List<float>(available.Count);
+
+                foreach (var lane in available)
+                {
+                    float normalizedNarrowness = (maxWidth - lane.WidthCells) / (float)maxWidth;
+                    float weight = Mathf.Lerp(1f, 1f + normalizedNarrowness * 3f, smallerLaneBias);
+                    weight += Random.Range(0f, laneRandomJitter);
+                    weights.Add(weight);
+                    totalWeight += weight;
+                }
+
+                float roll = Random.Range(0f, Mathf.Max(0.0001f, totalWeight));
+                float cumulative = 0f;
+                int chosenIndex = 0;
+
+                for (int i = 0; i < available.Count; i++)
+                {
+                    cumulative += weights[i];
+                    if (roll <= cumulative)
+                    {
+                        chosenIndex = i;
+                        break;
+                    }
+                }
+
+                selected.Add(available[chosenIndex]);
+                available.RemoveAt(chosenIndex);
+            }
+
+            while (selected.Count < attackerCount && orderedLanes.Count > 0)
+            {
+                selected.Add(orderedLanes[selected.Count % orderedLanes.Count]);
+            }
+
+            return selected;
         }
 
         private List<int> BuildSpreadLaneIndices(int attackerCount, int laneCount)

@@ -13,6 +13,18 @@ namespace PacMan.Agent.RoleAssignment
             public string Reason;
         }
 
+        public class CapsuleCampAssignment
+        {
+            public GameObject CapsuleTarget;
+            public string Reason;
+        }
+
+        public class CapsuleRushAssignment
+        {
+            public GameObject CapsuleTarget;
+            public string Reason;
+        }
+
         private readonly RoleAssigner _roleAssigner;
 
         public AttackManager(RoleAssigner roleAssigner)
@@ -20,7 +32,7 @@ namespace PacMan.Agent.RoleAssignment
             _roleAssigner = roleAssigner;
         }
 
-        public Assignment GetAssignment(PacManAIDebugBT requester, List<GameObject> activeEnemyFood)
+        public Assignment GetAssignment(PacManAIDebugBT requester, List<GameObject> activeEnemyFood, bool includePoweredDefenders = false)
         {
             if (requester == null || activeEnemyFood == null || activeEnemyFood.Count == 0)
                 return null;
@@ -31,7 +43,10 @@ namespace PacMan.Agent.RoleAssignment
 
             var attackers = _roleAssigner
                 .GetRegisteredAgentsForTeam(team)
-                .Where(agent => agent != null && agent.AssignedRole == StaticRole.Attack)
+                .Where(agent =>
+                    agent != null &&
+                    (agent.AssignedRole == StaticRole.Attack ||
+                     (includePoweredDefenders && agent.AgentManager != null && agent.AgentManager.IsPoweredUp())))
                 .ToList();
 
             if (attackers.Count == 0)
@@ -76,17 +91,162 @@ namespace PacMan.Agent.RoleAssignment
             return bestAssignments.TryGetValue(requester, out var assignment) ? assignment : null;
         }
 
+        public CapsuleCampAssignment GetCapsuleCampAssignment(PacManAIDebugBT requester, List<GameObject> activeEnemyCapsules)
+        {
+            if (requester == null || activeEnemyCapsules == null || activeEnemyCapsules.Count == 0)
+                return null;
+
+            Team team = TeamAssignmentUtil.CheckTeam(requester.gameObject);
+            if (team == Team.Undefined)
+                return null;
+
+            var attackers = _roleAssigner
+                .GetRegisteredAgentsForTeam(team)
+                .Where(agent => agent != null && agent.AssignedRole == StaticRole.Attack)
+                .ToList();
+
+            if (attackers.Count < 2)
+                return null;
+
+            var capsuleCandidates = activeEnemyCapsules
+                .Where(capsule => capsule != null && capsule.activeSelf)
+                .Distinct()
+                .ToList();
+
+            if (capsuleCandidates.Count == 0)
+                return null;
+
+            var bestCandidate = attackers
+                .SelectMany(attacker => capsuleCandidates.Select(capsule => new
+                {
+                    Attacker = attacker,
+                    Capsule = capsule,
+                    Score = (attacker.transform.localPosition - capsule.transform.localPosition).sqrMagnitude
+                }))
+                .OrderBy(candidate => candidate.Score)
+                .FirstOrDefault();
+
+            if (bestCandidate == null || bestCandidate.Attacker != requester)
+                return null;
+
+            return new CapsuleCampAssignment
+            {
+                CapsuleTarget = bestCandidate.Capsule,
+                Reason = "Camp next enemy power capsule"
+            };
+        }
+
+        public CapsuleRushAssignment GetCapsuleRushAssignment(PacManAIDebugBT requester, List<GameObject> activeEnemyCapsules)
+        {
+            if (requester == null || activeEnemyCapsules == null || activeEnemyCapsules.Count == 0)
+                return null;
+
+            Team team = TeamAssignmentUtil.CheckTeam(requester.gameObject);
+            if (team == Team.Undefined)
+                return null;
+
+            var attackers = _roleAssigner
+                .GetRegisteredAgentsForTeam(team)
+                .Where(agent => agent != null && agent.AssignedRole == StaticRole.Attack)
+                .ToList();
+
+            if (attackers.Count == 0)
+                return null;
+
+            var capsuleCandidates = activeEnemyCapsules
+                .Where(capsule => capsule != null && capsule.activeSelf)
+                .Distinct()
+                .ToList();
+
+            if (capsuleCandidates.Count == 0)
+                return null;
+
+            if (attackers.Count >= 2 && capsuleCandidates.Count >= 2)
+            {
+                var attackerA = attackers[0];
+                var attackerB = attackers[1];
+                var capsuleA = capsuleCandidates[0];
+                var capsuleB = capsuleCandidates[1];
+
+                float aToA = (attackerA.transform.localPosition - capsuleA.transform.localPosition).sqrMagnitude;
+                float aToB = (attackerA.transform.localPosition - capsuleB.transform.localPosition).sqrMagnitude;
+                float bToA = (attackerB.transform.localPosition - capsuleA.transform.localPosition).sqrMagnitude;
+                float bToB = (attackerB.transform.localPosition - capsuleB.transform.localPosition).sqrMagnitude;
+
+                var assignments = new Dictionary<PacManAIDebugBT, GameObject>();
+
+                if (aToA <= aToB && aToA <= bToA && aToA <= bToB)
+                {
+                    assignments[attackerA] = capsuleA;
+                    assignments[attackerB] = capsuleB;
+                }
+                else if (aToB <= aToA && aToB <= bToA && aToB <= bToB)
+                {
+                    assignments[attackerA] = capsuleB;
+                    assignments[attackerB] = capsuleA;
+                }
+                else if (bToA <= aToA && bToA <= aToB && bToA <= bToB)
+                {
+                    assignments[attackerB] = capsuleA;
+                    assignments[attackerA] = capsuleB;
+                }
+                else
+                {
+                    assignments[attackerB] = capsuleB;
+                    assignments[attackerA] = capsuleA;
+                }
+
+                if (assignments.TryGetValue(requester, out var assignedCapsule))
+                {
+                    return new CapsuleRushAssignment
+                    {
+                        CapsuleTarget = assignedCapsule,
+                        Reason = "Assigned split enemy power capsule"
+                    };
+                }
+
+                return null;
+            }
+
+            var fallbackCapsule = capsuleCandidates
+                .OrderBy(capsule => (requester.transform.localPosition - capsule.transform.localPosition).sqrMagnitude)
+                .FirstOrDefault();
+
+            if (fallbackCapsule == null)
+                return null;
+
+            return new CapsuleRushAssignment
+            {
+                CapsuleTarget = fallbackCapsule,
+                Reason = "Assigned nearest enemy power capsule"
+            };
+        }
+
         private static float ScoreFood(PacManAIDebugBT attacker, GameObject food)
         {
             Vector3 attackerPos = attacker.transform.localPosition;
             Vector3 foodPos = food.transform.localPosition;
             float distanceScore = (attackerPos - foodPos).sqrMagnitude;
 
-            if (!attacker.HasAttackAnchor)
+            Vector3 anchor = Vector3.zero;
+            bool hasAnchor = false;
+
+            if (attacker.HasAttackAnchor)
+            {
+                anchor = attacker.AttackAnchor;
+                hasAnchor = true;
+            }
+            else if (attacker.HasDefenseAnchor)
+            {
+                anchor = attacker.DefenseAnchor;
+                hasAnchor = true;
+            }
+
+            if (!hasAnchor)
                 return distanceScore;
 
-            float laneDelta = Mathf.Abs(attacker.AttackAnchor.z - foodPos.z);
-            float anchorDelta = (attacker.AttackAnchor - foodPos).sqrMagnitude;
+            float laneDelta = Mathf.Abs(anchor.z - foodPos.z);
+            float anchorDelta = (anchor - foodPos).sqrMagnitude;
 
             // Recompute greedily from live positions so attackers can swap pills
             // when one becomes clearly closer, while still using the lane anchor
