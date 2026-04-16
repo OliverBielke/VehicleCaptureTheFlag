@@ -6,7 +6,6 @@ using PacMan.Agent.PathFinding;
 using PacMan.Agent.PathFollowing;
 using PacMan.Agent.BehaviorTreeFolder;
 using PacMan.Agent.Map;
-using TMPro;
 using UnityEngine;
 using Scripts.Map;
 using PacMan.Agent.EnemyLocalization;
@@ -47,8 +46,6 @@ namespace PacMan.Agent
         private string _btReason = "-";
         [SerializeField] private bool drawObstacleMap = false;
         [Header("Debug")]
-        [SerializeField] private TextMeshPro debugText;
-        [SerializeField] private bool allowManualOverride = true;
         [SerializeField] private StaticRole _assignedRole = StaticRole.None;
         [SerializeField] private Vector3 _defenseAnchor;
         [SerializeField] private bool _hasDefenseAnchor = false;
@@ -64,8 +61,7 @@ namespace PacMan.Agent
         [SerializeField] private float lateGameCapsuleRushSeconds = 45f;
         [SerializeField] private int poweredReturnFoodThreshold = 6;
         [SerializeField] private float nextCapsuleGrabLeadTime = 0.15f;
-        [SerializeField] private int staleEnemyCapsuleIgnoreSteps = 30;
-        [SerializeField] private float staleEnemyCapsuleIgnoreRadius = 1.0f;
+        [SerializeField] private float consumedCapsuleContactDistance = 0.25f;
         [Header("Retreat")]
         [SerializeField] private float returnHomeOwnSideOffset = 0.8f;
         [SerializeField] private float returnHomeReleaseOwnSideDistance = 1.2f;
@@ -97,6 +93,7 @@ namespace PacMan.Agent
         
         private VoronoiPartitioning _voronoiPartitioning;
         private Dictionary<Vector2Int, VoronoiCellData> _currentVoronoi;
+        private static readonly Dictionary<Team, List<Vector3>> ConsumedEnemyCapsulesByTeam = new();
 
         // To track respawns
         private int _previousRespawnStep = -1;
@@ -105,9 +102,6 @@ namespace PacMan.Agent
         private bool _attackerThreatRetreatActive = false;
         private int _previousCarriedFoodCount = 0;
         private bool _attackerRegroupAfterReturnHome = false;
-        private bool _previousIsPowered = false;
-        private int _ignoredEnemyCapsuleUntilStep = -1;
-        private Vector3 _ignoredEnemyCapsulePosition = Vector3.zero;
         private int _lastPlannedUnsafeCellCount = 0;
         private Vector3 _lastPlannedGoalPosition = Vector3.zero;
         private bool _hasLatchedHomeTarget = false;
@@ -183,6 +177,7 @@ namespace PacMan.Agent
             var groundPlane = GameObject.Find("GroundPlane");
             var groundCollider = groundPlane.GetComponent<Collider>();
             RoleAssigner.Instance?.RegisterAgent(this);
+            ConsumedEnemyCapsulesByTeam[TeamAssignmentUtil.CheckTeam(gameObject)] = new List<Vector3>();
             
             // Set the initial respawn step
             if (_agent != null) _previousRespawnStep = _agent.GetLastRespawnStep();
@@ -212,8 +207,6 @@ namespace PacMan.Agent
                 _attackerThreatRetreatActive = false;
                 _previousCarriedFoodCount = carriedFoodCount;
                 _attackerRegroupAfterReturnHome = false;
-                _previousIsPowered = isPoweredNow;
-                _ignoredEnemyCapsuleUntilStep = -1;
                 _lastPlannedUnsafeCellCount = 0;
                 _hasLatchedHomeTarget = false;
                 _teammateYieldBackoffUntilStep = -1;
@@ -222,6 +215,8 @@ namespace PacMan.Agent
                 _teammateYieldWaitingForSeparation = false;
             }
 
+            RegisterConsumedEnemyCapsuleFromTeamPositions();
+
             TryTriggerTeammateYield();
 
             if (IsTeammateYieldBackoffActive())
@@ -229,21 +224,10 @@ namespace PacMan.Agent
                 ClearCurrentPath();
                 _previousMode = _currentMode;
                 _previousCarriedFoodCount = carriedFoodCount;
-                _previousIsPowered = isPoweredNow;
                 return new PacManAction
                 {
                     Acceleration = _teammateYieldBackoffAcceleration
                 };
-            }
-
-            if (_assignedRole == StaticRole.Attack &&
-                !_previousIsPowered &&
-                isPoweredNow &&
-                TryGetClosestObjectPosition(transform.localPosition, GetActiveEnemyCapsules(applyIgnoredFilter: false), out var justConsumedCapsule) &&
-                Vector3.Distance(transform.localPosition, justConsumedCapsule) <= staleEnemyCapsuleIgnoreRadius)
-            {
-                _ignoredEnemyCapsulePosition = justConsumedCapsule;
-                _ignoredEnemyCapsuleUntilStep = _agent.GetStepsSinceMatchStart() + Mathf.Max(1, staleEnemyCapsuleIgnoreSteps);
             }
 
             bool justDepositedFood =
@@ -268,15 +252,8 @@ namespace PacMan.Agent
 
             Vector2 accel = ExecuteDecision(_lastDecision, velocity);
 
-            Vector2 manualAccel = GetManualAcceleration();
-            if (manualAccel != Vector2.zero)
-            {
-                accel = manualAccel;
-            }
-
             _previousMode = _currentMode;
             _previousCarriedFoodCount = carriedFoodCount;
-            _previousIsPowered = isPoweredNow;
 
             return new PacManAction
             {
@@ -444,37 +421,6 @@ namespace PacMan.Agent
 
             return GetReturnHomeAcceleration();
         }
-        private Vector2 GetManualAcceleration()
-        {
-            int x = 0;
-            int z = 0;
-
-            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
-            bool isRed = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Red;
-
-            if ((isBlue && Input.GetKey("w")) || (isRed && Input.GetKey(KeyCode.UpArrow)))
-            {
-                z = 1;
-            }
-
-            if ((isBlue && Input.GetKey("s")) || (isRed && Input.GetKey(KeyCode.DownArrow)))
-            {
-                z = -1;
-            }
-
-            if ((isBlue && Input.GetKey("a")) || (isRed && Input.GetKey(KeyCode.LeftArrow)))
-            {
-                x = -1;
-            }
-
-            if ((isBlue && Input.GetKey("d")) || (isRed && Input.GetKey(KeyCode.RightArrow)))
-            {
-                x = 1;
-            }
-
-            return new Vector2(x, z);
-        }
-
 
         /// <summary>
         /// Get closest visible enemy PacMan and Ghost distances. 
@@ -1028,26 +974,100 @@ namespace PacMan.Agent
             return _latchedHomeTarget;
         }
 
-        private List<GameObject> GetActiveEnemyCapsules(bool applyIgnoredFilter = true)
+        private List<GameObject> GetActiveEnemyCapsules()
         {
             var capsules = _agent.GetCapsuleObjects();
             if (capsules == null)
                 return new List<GameObject>();
 
             Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
-            bool ignoreStaleCapsule =
-                applyIgnoredFilter &&
-                _agent != null &&
-                _agent.GetStepsSinceMatchStart() < _ignoredEnemyCapsuleUntilStep;
 
             return capsules
                 .Where(capsule =>
                     capsule != null &&
                     capsule.activeSelf &&
                     TeamAssignmentUtil.CheckTeam(capsule) != myTeam &&
-                    (!ignoreStaleCapsule ||
-                     Vector3.Distance(capsule.transform.localPosition, _ignoredEnemyCapsulePosition) > staleEnemyCapsuleIgnoreRadius))
+                    !IsConsumedEnemyCapsulePosition(capsule.transform.localPosition))
                 .ToList();
+        }
+
+        private void RegisterConsumedEnemyCapsuleFromTeamPositions()
+        {
+            float detectionRadius = Mathf.Max(0.05f, consumedCapsuleContactDistance);
+            var capsules = GetRawEnemyCapsules();
+            if (capsules == null || capsules.Count == 0)
+                return;
+
+            var searchPositions = new List<Vector3> { transform.localPosition };
+            var friendlies = _agent != null ? _agent.GetFriendlyAgents() : null;
+            if (friendlies != null)
+            {
+                searchPositions.AddRange(friendlies
+                    .Where(friendly => friendly != null)
+                    .Select(friendly => friendly.transform.localPosition));
+            }
+
+            foreach (var position in searchPositions)
+            {
+                GameObject nearestCapsule = null;
+                float nearestDistance = float.MaxValue;
+
+                foreach (var capsule in capsules)
+                {
+                    if (capsule == null)
+                        continue;
+
+                    float distance = Vector3.Distance(position, capsule.transform.localPosition);
+                    if (distance > detectionRadius || distance >= nearestDistance)
+                        continue;
+
+                    nearestDistance = distance;
+                    nearestCapsule = capsule;
+                }
+
+                if (nearestCapsule != null && !IsConsumedEnemyCapsulePosition(nearestCapsule.transform.localPosition))
+                {
+                    GetConsumedEnemyCapsulePositions().Add(nearestCapsule.transform.localPosition);
+                }
+            }
+        }
+
+        private bool IsConsumedEnemyCapsulePosition(Vector3 position)
+        {
+            float detectionRadius = Mathf.Max(0.05f, consumedCapsuleContactDistance);
+            foreach (var consumedPosition in GetConsumedEnemyCapsulePositions())
+            {
+                if (Vector3.Distance(consumedPosition, position) <= detectionRadius)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private List<GameObject> GetRawEnemyCapsules()
+        {
+            var capsules = _agent.GetCapsuleObjects();
+            if (capsules == null)
+                return new List<GameObject>();
+
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            return capsules
+                .Where(capsule =>
+                    capsule != null &&
+                    TeamAssignmentUtil.CheckTeam(capsule) != myTeam)
+                .ToList();
+        }
+
+        private List<Vector3> GetConsumedEnemyCapsulePositions()
+        {
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            if (!ConsumedEnemyCapsulesByTeam.TryGetValue(myTeam, out var consumed))
+            {
+                consumed = new List<Vector3>();
+                ConsumedEnemyCapsulesByTeam[myTeam] = consumed;
+            }
+
+            return consumed;
         }
 
         private List<GameObject> GetActiveFriendlyCapsules()
@@ -1599,37 +1619,6 @@ namespace PacMan.Agent
             pursuitAcceleration = new Vector2(pursuitDirection.x, pursuitDirection.z);
             return true;
         }
-        private void OnGUI()
-        {
-            if (!Application.isPlaying)
-                return;
-
-            Vector3 worldPos = transform.position + Vector3.up * 2f;
-            Vector3 screenPos = Camera.main.WorldToScreenPoint(worldPos);
-
-            if (screenPos.z <= 0f)
-                return;
-
-            float x = screenPos.x;
-            float y = Screen.height - screenPos.y;
-
-            string btLabel = _lastDecision != null ? _lastDecision.DebugLabel : "-";
-            string targetText = (_lastDecision != null && _lastDecision.HasTarget)
-                ? _lastDecision.TargetPosition.ToString("F2")
-                : "-";
-
-            GUI.Label(
-                new Rect(x, y, 280f, 180f),
-                $"Role: {_assignedRole}\n" +
-                $"Mode: {_currentMode}\n" +
-                $"BT: {btLabel}\n" +
-                $"Reason: {_btReason}\n" +
-                $"Has goal: {_hasGoal}\n" +
-                $"Has target: {(_lastDecision != null && _lastDecision.HasTarget)}\n" +
-                $"Target: {targetText}"
-            );
-        }
-        
         private void ClearCurrentPath()
         {
             _hasGoal = false;

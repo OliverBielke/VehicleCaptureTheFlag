@@ -116,8 +116,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   drawObstacleMap: 0
-  debugText: {fileID: 0}
-  allowManualOverride: 1
   _assignedRole: 0
   _defenseAnchor: {x: 0, y: 0, z: 0}
   _hasDefenseAnchor: 0
@@ -129,8 +127,7 @@ MonoBehaviour:
   lateGameCapsuleRushSeconds: 45
   poweredReturnFoodThreshold: 6
   nextCapsuleGrabLeadTime: 0.15
-  staleEnemyCapsuleIgnoreSteps: 30
-  staleEnemyCapsuleIgnoreRadius: 1
+  consumedCapsuleContactDistance: 0.25
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
   friendlyCapsuleObstacleInflation: 1
@@ -152,6 +149,7 @@ MonoBehaviour:
   teammateYieldGoalIgnoreRadius: 0.5
   teammateYieldObstacleInflation: 1
   teammateYieldSettledTargetDistance: 0.45
+  teammateYieldReleaseDistance: 1.1
 --- !u!114 &6052309846596243798
 MonoBehaviour:
   m_ObjectHideFlags: 0
