@@ -579,6 +579,15 @@ namespace PacMan.Agent
         
         private void UpdateVoronoiData()
         {
+            // If agent has at least two seconds of powers
+            // or it is powered and there is another power pill on the map
+            if (_agent.GetPowerRemainingDuration() > 2f || 
+                (_agent.IsPoweredUp() && _agent.GetCapsuleObjects().Any(c => c != null && c.activeSelf && !IsInOwnTerritory(c.transform.localPosition))))
+            {
+                _currentVoronoi = null;
+                return;
+            }
+            
             var visibleEnemies = _agent.GetVisibleEnemyAgents();
     
             if (visibleEnemies == null || visibleEnemies.Count == 0)
