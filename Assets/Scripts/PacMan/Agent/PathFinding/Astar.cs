@@ -320,7 +320,7 @@ namespace PacMan.Agent.PathFinding
         /// <param name="gridSize"> Size of the grids </param>
         /// <param name="maxRadius"> Radius to check snap </param>
         /// <returns>True if the position is traversable and false otherwise. </returns>
-        private Vector2Int FindNearestFreeCell(Vector2Int origin, int maxRadius = 3)
+        private Vector2Int FindNearestFreeCell(Vector2Int origin, int maxRadius = 8)
         {
             if (IsTraversableAStar(origin)) return origin;
 

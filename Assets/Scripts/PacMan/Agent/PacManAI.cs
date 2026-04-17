@@ -66,6 +66,7 @@ namespace PacMan.Agent
         [SerializeField] private float returnHomeOwnSideOffset = 0.8f;
         [SerializeField] private float returnHomeReleaseOwnSideDistance = 1.2f;
         [SerializeField] private float friendlyCapsuleObstacleInflation = 1.0f;
+        [SerializeField] private float capsuleGoalIgnoreRadius = 0.6f;
         [SerializeField] private float baseGhostDangerDistance = 2.5f;
         [SerializeField] private float maxGhostDangerDistance = 6.0f;
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
@@ -112,6 +113,7 @@ namespace PacMan.Agent
         private Vector3 _teammateYieldObstaclePosition = Vector3.zero;
         private Vector2 _teammateYieldBackoffAcceleration = Vector2.zero;
         private bool _teammateYieldWaitingForSeparation = false;
+        private static GUIStyle _agentHudStyle;
 
         private const float AnchorReachedDistance = 0.35f;
 
@@ -223,6 +225,7 @@ namespace PacMan.Agent
             {
                 ClearCurrentPath();
                 _previousMode = _currentMode;
+                _btReason = "Yielding to teammate";
                 _previousCarriedFoodCount = carriedFoodCount;
                 return new PacManAction
                 {
@@ -461,7 +464,7 @@ namespace PacMan.Agent
                 .Where(enemy => enemy != null && enemy.HasPosition)
                 .Where(enemy => Vector3.Distance(enemy.Position, _goalPosition) > 0.35f)
                 .Select(enemy => enemy.Position)
-                .Concat(GetInflatedFriendlyCapsuleObstaclePoints())
+                .Concat(GetInflatedCapsuleObstaclePoints())
                 .ToList();
 
             if (IsTeammateYieldObstacleActive() &&
@@ -693,9 +696,14 @@ namespace PacMan.Agent
                 ghostNearby = false;
             }
 
+            var attackAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: isPowered);
+            var capsuleCampAssignment = RoleAssigner.Instance?.AttackManager?.GetCapsuleCampAssignment(this, activeEnemyCapsules);
+            var capsuleRushAssignment = RoleAssigner.Instance?.AttackManager?.GetCapsuleRushAssignment(this, activeEnemyCapsules);
+            bool hasPoweredCapsuleAssignment = isPowered && capsuleCampAssignment?.CapsuleTarget != null;
+
             bool shouldCommitReturnHome =
                 (!shouldRushPowerCapsule && carryingFood && !isPowered && ghostInsideEnterRange) ||
-                (isPowered && carriedFoodCount >= poweredReturnFoodThreshold);
+                (isPowered && !hasPoweredCapsuleAssignment && carriedFoodCount >= poweredReturnFoodThreshold);
 
             bool shouldReturnHomeNow =
                 _attackerRegroupAfterReturnHome ||
@@ -724,10 +732,6 @@ namespace PacMan.Agent
                 _hasLatchedHomeTarget = false;
 
             bb.homeTargetPosition = homeTarget;
-
-            var attackAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: isPowered);
-            var capsuleCampAssignment = RoleAssigner.Instance?.AttackManager?.GetCapsuleCampAssignment(this, activeEnemyCapsules);
-            var capsuleRushAssignment = RoleAssigner.Instance?.AttackManager?.GetCapsuleRushAssignment(this, activeEnemyCapsules);
             GameObject selectedFoodTarget = attackAssignment?.FoodTarget;
             string selectedFoodReason = attackAssignment?.Reason ?? "Safe enemy pill available";
 
@@ -753,22 +757,20 @@ namespace PacMan.Agent
 
             if (isPowered)
             {
-                bb.shouldReturnHome = carriedFoodCount >= poweredReturnFoodThreshold;
-
-                if (!bb.shouldReturnHome &&
-                    capsuleCampAssignment?.CapsuleTarget != null &&
+                if (hasPoweredCapsuleAssignment &&
                     powerRemaining <= Mathf.Max(0f, nextCapsuleGrabLeadTime))
                 {
                     bb.shouldGrabPowerCapsule = true;
                     bb.powerCapsuleTargetPosition = capsuleCampAssignment.CapsuleTarget.transform.localPosition;
                 }
-                else if (!bb.shouldReturnHome && capsuleCampAssignment?.CapsuleTarget != null)
+                else if (hasPoweredCapsuleAssignment)
                 {
                     bb.shouldCampNextPowerCapsule = true;
                     bb.powerCapsuleCampPosition = GetCapsuleCampPoint(capsuleCampAssignment.CapsuleTarget.transform.localPosition);
                 }
                 else
                 {
+                    bb.shouldReturnHome = carriedFoodCount >= poweredReturnFoodThreshold;
                     bb.shouldLootWhilePowered = selectedFoodTarget != null;
 
                     if (bb.shouldLootWhilePowered)
@@ -1075,24 +1077,22 @@ namespace PacMan.Agent
             return consumed;
         }
 
-        private List<GameObject> GetActiveFriendlyCapsules()
+        private List<GameObject> GetActiveCapsules()
         {
             var capsules = _agent.GetCapsuleObjects();
             if (capsules == null)
                 return new List<GameObject>();
 
-            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
             return capsules
                 .Where(capsule =>
                     capsule != null &&
-                    capsule.activeSelf &&
-                    TeamAssignmentUtil.CheckTeam(capsule) == myTeam)
+                    capsule.activeSelf)
                 .ToList();
         }
 
-        private IEnumerable<Vector3> GetInflatedFriendlyCapsuleObstaclePoints()
+        private IEnumerable<Vector3> GetInflatedCapsuleObstaclePoints()
         {
-            var capsules = GetActiveFriendlyCapsules();
+            var capsules = GetActiveCapsules();
             if (capsules == null || capsules.Count == 0)
                 yield break;
 
@@ -1106,6 +1106,8 @@ namespace PacMan.Agent
                     continue;
 
                 Vector3 center = capsule.transform.localPosition;
+                if (Vector3.Distance(center, _goalPosition) <= capsuleGoalIgnoreRadius)
+                    continue;
 
                 for (int dx = -radiusSteps; dx <= radiusSteps; dx++)
                 {
@@ -1361,19 +1363,24 @@ namespace PacMan.Agent
             if (_agent == null)
                 return;
 
+            int currentStep = _agent.GetStepsSinceMatchStart();
+
             if (ShouldIgnoreTeammateYieldWhileSettled())
                 return;
 
             float releaseDistance = Mathf.Max(teammateYieldDetectDistance + 0.05f, teammateYieldReleaseDistance);
             if (_teammateYieldWaitingForSeparation)
             {
-                if (Vector3.Distance(transform.localPosition, _teammateYieldObstaclePosition) < releaseDistance)
-                    return;
+                if (TryGetTeammateYieldContact(out var currentTeammatePosition))
+                {
+                    _teammateYieldObstaclePosition = currentTeammatePosition;
+                    if (Vector3.Distance(transform.localPosition, currentTeammatePosition) < releaseDistance)
+                        return;
+                }
 
-                _teammateYieldWaitingForSeparation = false;
+                ResetTeammateYieldSeparationState();
             }
 
-            int currentStep = _agent.GetStepsSinceMatchStart();
             if (currentStep < _teammateYieldRetriggerBlockedUntilStep)
                 return;
 
@@ -1392,13 +1399,81 @@ namespace PacMan.Agent
             }
 
             Vector3 awayNormalized = away3.sqrMagnitude > 0.0001f ? away3.normalized : Vector3.back;
-            _teammateYieldBackoffAcceleration = new Vector2(awayNormalized.x, awayNormalized.z);
+            Vector3 yieldDirection = ComputeTeammateYieldDirection(teammatePosition, awayNormalized);
+            _teammateYieldBackoffAcceleration = new Vector2(yieldDirection.x, yieldDirection.z);
             _teammateYieldObstaclePosition = teammatePosition;
             _teammateYieldBackoffUntilStep = currentStep + Mathf.Max(1, teammateYieldBackoffSteps);
             _teammateYieldObstacleUntilStep = currentStep + Mathf.Max(1, teammateYieldObstacleSteps);
             _teammateYieldRetriggerBlockedUntilStep = currentStep + Mathf.Max(1, teammateYieldRetriggerCooldownSteps);
             _teammateYieldWaitingForSeparation = true;
             ClearCurrentPath();
+        }
+
+        private Vector3 ComputeTeammateYieldDirection(Vector3 teammatePosition, Vector3 awayNormalized)
+        {
+            Vector3 desiredDirection = Vector3.zero;
+            Vector3 myPos = transform.localPosition;
+
+            if (_lastDecision != null && _lastDecision.HasTarget)
+            {
+                desiredDirection = _lastDecision.TargetPosition - myPos;
+            }
+            else if (_hasGoal)
+            {
+                desiredDirection = _goalPosition - myPos;
+            }
+            else if (_agent != null)
+            {
+                desiredDirection = _agent.GetVelocity();
+            }
+
+            desiredDirection.y = 0f;
+            if (desiredDirection.sqrMagnitude > 0.0001f)
+                desiredDirection.Normalize();
+
+            Vector3 contactDirection = teammatePosition - myPos;
+            contactDirection.y = 0f;
+            if (contactDirection.sqrMagnitude <= 0.0001f)
+                return awayNormalized;
+
+            contactDirection.Normalize();
+            Vector3 leftPerpendicular = new Vector3(-contactDirection.z, 0f, contactDirection.x);
+            Vector3 rightPerpendicular = -leftPerpendicular;
+
+            float leftScore = ScoreYieldDirection(leftPerpendicular, desiredDirection);
+            float rightScore = ScoreYieldDirection(rightPerpendicular, desiredDirection);
+            Vector3 sidestep = leftScore >= rightScore ? leftPerpendicular : rightPerpendicular;
+
+            // Keep a smaller "move apart" component so the sidestep still opens space for replanning.
+            Vector3 combined = sidestep * 0.85f + awayNormalized * 0.35f;
+            combined.y = 0f;
+            return combined.sqrMagnitude > 0.0001f ? combined.normalized : awayNormalized;
+        }
+
+        private float ScoreYieldDirection(Vector3 direction, Vector3 desiredDirection)
+        {
+            float score = 0f;
+
+            if (desiredDirection.sqrMagnitude > 0.0001f)
+                score += Vector3.Dot(direction, desiredDirection);
+
+            if (_obstacleMap != null)
+            {
+                Vector3 samplePoint = transform.localPosition + direction * Mathf.Max(0.3f, teammateYieldDetectDistance * 0.75f);
+                if (_obstacleMap.GetLocalPointTraversibility(samplePoint) == ObstacleMapV2.Traversability.Free)
+                    score += 0.5f;
+                else
+                    score -= 1.0f;
+            }
+
+            return score;
+        }
+
+        private void ResetTeammateYieldSeparationState()
+        {
+            _teammateYieldWaitingForSeparation = false;
+            _teammateYieldObstacleUntilStep = -1;
+            _teammateYieldObstaclePosition = Vector3.zero;
         }
 
         private bool TryGetTeammateYieldContact(out Vector3 teammatePosition)
@@ -1672,6 +1747,44 @@ namespace PacMan.Agent
             {
                 _voronoiPartitioning.DrawVoronoiDebug(_currentVoronoi);
             }
+        }
+
+        private void OnGUI()
+        {
+            if (DebugManager.Instance != null && !DebugManager.Instance.agentHud)
+                return;
+
+            Camera camera = Camera.main;
+            if (camera == null)
+                return;
+
+            Vector3 worldAnchor = transform.position + Vector3.up * 1.35f;
+            Vector3 screen = camera.WorldToScreenPoint(worldAnchor);
+            if (screen.z <= 0f)
+                return;
+
+            if (_agentHudStyle == null)
+            {
+                _agentHudStyle = new GUIStyle(GUI.skin.label);
+                _agentHudStyle.alignment = TextAnchor.UpperLeft;
+                _agentHudStyle.fontSize = 12;
+                _agentHudStyle.wordWrap = true;
+                _agentHudStyle.normal.textColor = Color.white;
+            }
+
+            string text = $"Role: {_assignedRole}\nMode: {_currentMode}\nReason: {_btReason}";
+            const float labelWidth = 220f;
+            float labelHeight = _agentHudStyle.CalcHeight(new GUIContent(text), labelWidth);
+            Rect rect = new Rect(
+                screen.x - labelWidth * 0.5f - 8f,
+                Screen.height - screen.y - labelHeight - 18f,
+                labelWidth + 16f,
+                labelHeight + 10f);
+
+            GUI.color = new Color(0f, 0f, 0f, 0.75f);
+            GUI.Box(rect, GUIContent.none);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(rect.x + 8f, rect.y + 5f, rect.width - 16f, rect.height - 10f), text, _agentHudStyle);
         }
         private void DrawMiddleGizmos()
         {

@@ -460,6 +460,7 @@ namespace PacMan.Agent.RoleAssignment
             return selected;
         }
 
+
         private List<int> BuildSpreadLaneIndices(int attackerCount, int laneCount)
         {
             var indices = new List<int>();
