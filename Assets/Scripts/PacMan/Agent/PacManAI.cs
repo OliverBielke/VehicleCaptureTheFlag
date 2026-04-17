@@ -184,7 +184,8 @@ namespace PacMan.Agent
             // Set the initial respawn step
             if (_agent != null) _previousRespawnStep = _agent.GetLastRespawnStep();
             
-            _voronoiPartitioning = new VoronoiPartitioning(_obstacleMap);
+            var coarseObstacleMap = ObstacleMapV2.Initialize(_mapManager, new List<GameObject>(), new Vector3(1f, 1f, 1f));
+            _voronoiPartitioning = new VoronoiPartitioning(coarseObstacleMap);
         }
 
         private void OnDisable()
