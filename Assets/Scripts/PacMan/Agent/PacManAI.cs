@@ -885,15 +885,11 @@ namespace PacMan.Agent
                 {
                     if (enemy == null || enemy.serverIndex < 0)
                         continue;
-
-                    Vector3 position = enemy.transform.localPosition;
-                    if (tracker != null && tracker.TryGetEstimate(enemy.serverIndex, out var estimatedPosition))
-                        position = estimatedPosition;
-
+                    
                     tracked[enemy.serverIndex] = new TrackedEnemyInfo
                     {
                         ServerIndex = enemy.serverIndex,
-                        Position = position,
+                        Position = enemy.transform.localPosition,
                         IsGhost = enemy.IsGhost(),
                         IsVisible = true,
                         HasFood = enemy.GetCarriedFoodCount() > 0,
@@ -1494,7 +1490,7 @@ namespace PacMan.Agent
                 ClearCurrentPath();
                 return pursuitAcceleration;
             }
-
+            
             return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f);
         }
         private Vector2 ExecuteBlockCrossing(BTDecision decision)
