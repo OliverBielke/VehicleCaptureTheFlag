@@ -583,6 +583,7 @@ namespace PacMan.Agent
             DefenderBlackboard bb = new DefenderBlackboard();
 
             Vector3 myPos = transform.localPosition;
+            UpdateVoronoiData();
             var defendAssignment = RoleAssigner.Instance?.DefendManager?.GetAssignment(this);
             var activeFood = _agent.GetFoodObjects().FindAll(f => f.activeSelf &&
                                                 TeamAssignmentUtil.CheckTeam(f) != TeamAssignmentUtil.CheckTeam(gameObject));
@@ -599,10 +600,11 @@ namespace PacMan.Agent
                 bb.shouldReturnHome = carriedFood >= poweredReturnFoodThreshold;
 
                 var poweredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
-                if (!bb.shouldReturnHome && poweredAssignment?.FoodTarget != null)
+                GameObject poweredFoodTarget = GetSafestFoodTarget(activeFood, poweredAssignment?.FoodTarget);
+                if (!bb.shouldReturnHome && poweredFoodTarget != null)
                 {
                     bb.shouldLootWhilePowered = true;
-                    bb.enemyPillTargetPosition = poweredAssignment.FoodTarget.transform.localPosition;
+                    bb.enemyPillTargetPosition = poweredFoodTarget.transform.localPosition;
                     bb.debugReason = "Powered up loot mode";
                 }
                 else if (bb.shouldReturnHome)
@@ -622,8 +624,10 @@ namespace PacMan.Agent
                 else
                 {
                     var scaredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
-                    GameObject selectedFoodTarget = scaredAssignment?.FoodTarget;
-                    string selectedFoodReason = scaredAssignment?.Reason ?? "Scared counter-raid";
+                    GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, scaredAssignment?.FoodTarget);
+                    string selectedFoodReason = selectedFoodTarget != null
+                        ? "Scared counter-raid (safest pill)"
+                        : (scaredAssignment?.Reason ?? "Scared counter-raid");
 
                     if (selectedFoodTarget != null && ShouldRetryFoodTarget(selectedFoodTarget.transform.localPosition))
                     {
@@ -641,7 +645,7 @@ namespace PacMan.Agent
                         bb.enemyPillTargetPosition = selectedFoodTarget.transform.localPosition;
                         bb.debugReason = selectedFoodReason;
                     }
-                    else if (TryGetClosestObjectPosition(myPos, activeFood, out var fallbackScaredFoodTarget))
+                    else if (TryGetSafestFoodPosition(myPos, activeFood, out var fallbackScaredFoodTarget))
                     {
                         bb.shouldLootWhilePowered = true;
                         bb.enemyPillTargetPosition = fallbackScaredFoodTarget;
@@ -794,8 +798,10 @@ namespace PacMan.Agent
                 _hasLatchedHomeTarget = false;
 
             bb.homeTargetPosition = homeTarget;
-            GameObject selectedFoodTarget = attackAssignment?.FoodTarget;
-            string selectedFoodReason = attackAssignment?.Reason ?? "Safe enemy pill available";
+            GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, attackAssignment?.FoodTarget);
+            string selectedFoodReason = selectedFoodTarget != null
+                ? "Safest enemy pill selected"
+                : (attackAssignment?.Reason ?? "Safe enemy pill available");
 
             if (selectedFoodTarget != null && ShouldRetryFoodTarget(selectedFoodTarget.transform.localPosition))
             {
@@ -840,7 +846,7 @@ namespace PacMan.Agent
                         bb.enemyPillTargetPosition = selectedFoodTarget.transform.localPosition;
                     }
                     else if (!bb.shouldReturnHome &&
-                             TryGetClosestObjectPosition(myPos, activeFood, out var fallbackPoweredFoodTarget))
+                             TryGetSafestFoodPosition(myPos, activeFood, out var fallbackPoweredFoodTarget))
                     {
                         bb.shouldLootWhilePowered = true;
                         bb.enemyPillTargetPosition = fallbackPoweredFoodTarget;
@@ -1215,6 +1221,25 @@ namespace PacMan.Agent
             return true;
         }
 
+        /// <summary>
+        /// Finds the safest active food target and returns its local position.
+        /// Safety is prioritized over distance, with distance used as a tie-breaker.
+        /// </summary>
+        /// <param name="fromPosition">Reference local position used for distance tie-breaking.</param>
+        /// <param name="objects">Candidate food objects to evaluate.</param>
+        /// <param name="targetPosition">Output local position of the selected safest food.</param>
+        /// <returns>True if a valid safest food target is found; otherwise false.</returns>
+        private bool TryGetSafestFoodPosition(Vector3 fromPosition, List<GameObject> objects, out Vector3 targetPosition)
+        {
+            targetPosition = Vector3.zero;
+            GameObject bestFood = GetSafestFoodTarget(objects, null, fromPosition);
+            if (bestFood == null)
+                return false;
+
+            targetPosition = bestFood.transform.localPosition;
+            return true;
+        }
+
         private bool ShouldRetryFoodTarget(Vector3 targetPosition)
         {
             return _lastPlannedUnsafeCellCount > pillUnsafeCellRetryThreshold &&
@@ -1228,9 +1253,106 @@ namespace PacMan.Agent
 
             return activeFood
                 .Where(food => food != null && food.activeSelf && food != currentTarget)
-                .OrderBy(food => Vector3.Distance(transform.localPosition, food.transform.localPosition))
+                .OrderByDescending(food => IsFoodCellSafe(food.transform.localPosition))
+                .ThenBy(food => GetFoodDanger(food.transform.localPosition))
+                .ThenBy(food => Vector3.Distance(transform.localPosition, food.transform.localPosition))
                 .Take(Mathf.Max(1, pillCandidateAttempts))
                 .FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Selects the safest food object from active candidates using Voronoi safety/danger,
+        /// and only uses distance as a tie-breaker.
+        /// </summary>
+        /// <param name="activeFood">Active enemy food candidates.</param>
+        /// <param name="preferredTarget">Optional existing target to keep unless a safer option is clearly better.</param>
+        /// <param name="fromPosition">Optional reference local position for distance tie-breaking; defaults to agent position.</param>
+        /// <returns>The selected safest food object, or null if no valid candidate exists.</returns>
+        private GameObject GetSafestFoodTarget(List<GameObject> activeFood, GameObject preferredTarget = null, Vector3? fromPosition = null)
+        {
+            if (activeFood == null || activeFood.Count == 0)
+                return null;
+
+            Vector3 origin = fromPosition ?? transform.localPosition;
+            var candidates = activeFood
+                .Where(food => food != null && food.activeSelf)
+                .Distinct()
+                .ToList();
+
+            if (candidates.Count == 0)
+                return null;
+
+            // Safety dominates; distance is only a tie-breaker among equally safe pills.
+            var best = candidates
+                .OrderByDescending(food => IsFoodCellSafe(food.transform.localPosition))
+                .ThenBy(food => GetFoodDanger(food.transform.localPosition))
+                .ThenBy(food => (food.transform.localPosition - origin).sqrMagnitude)
+                .FirstOrDefault();
+
+            if (best == null)
+                return preferredTarget;
+
+            if (preferredTarget == null || preferredTarget == best)
+                return best;
+
+            bool bestIsSafe = IsFoodCellSafe(best.transform.localPosition);
+            bool preferredIsSafe = IsFoodCellSafe(preferredTarget.transform.localPosition);
+
+            if (bestIsSafe && !preferredIsSafe)
+                return best;
+
+            float bestDanger = GetFoodDanger(best.transform.localPosition);
+            float preferredDanger = GetFoodDanger(preferredTarget.transform.localPosition);
+            if (bestDanger + 0.0001f < preferredDanger)
+                return best;
+
+            return preferredTarget;
+        }
+
+        /// <summary>
+        /// Checks whether the Voronoi cell containing the food is marked safe for this agent.
+        /// </summary>
+        /// <param name="foodPosition">Food world/local position to evaluate.</param>
+        /// <returns>True if the cell is safe, or if no Voronoi data is available.</returns>
+        private bool IsFoodCellSafe(Vector3 foodPosition)
+        {
+            if (TryGetFoodCellData(foodPosition, out var cellData))
+                return cellData.IsSafe;
+
+            return true;
+        }
+
+        /// <summary>
+        /// Gets a normalized danger score for the Voronoi cell containing the food.
+        /// </summary>
+        /// <param name="foodPosition">Food world/local position to evaluate.</param>
+        /// <returns>Danger in range [0..1], where lower is safer; returns 0 when no Voronoi data exists.</returns>
+        private float GetFoodDanger(Vector3 foodPosition)
+        {
+            if (TryGetFoodCellData(foodPosition, out var cellData))
+                return Mathf.Clamp01(cellData.Danger);
+
+            return 0f;
+        }
+
+        /// <summary>
+        /// Maps a food position to the coarse Voronoi grid and retrieves its cell data.
+        /// </summary>
+        /// <param name="foodPosition">Food world/local position to sample.</param>
+        /// <param name="cellData">Output Voronoi data for the corresponding coarse cell.</param>
+        /// <returns>True if the cell exists in the current Voronoi map; otherwise false.</returns>
+        private bool TryGetFoodCellData(Vector3 foodPosition, out VoronoiCellData cellData)
+        {
+            cellData = default;
+            if (_currentVoronoi == null || _currentVoronoi.Count == 0 || _obstacleMap == null)
+                return false;
+
+            var cell = _obstacleMap.WorldToCell(foodPosition);
+            var coarseKey = new Vector2Int(
+                FloorDiv(cell.x, VoronoiCellScaleFactor),
+                FloorDiv(cell.z, VoronoiCellScaleFactor));
+
+            return _currentVoronoi.TryGetValue(coarseKey, out cellData);
         }
 
         /// <summary>
