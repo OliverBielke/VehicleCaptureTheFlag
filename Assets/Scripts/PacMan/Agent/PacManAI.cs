@@ -116,10 +116,13 @@ namespace PacMan.Agent
         private bool _teammateYieldWaitingForSeparation = false;
         private static GUIStyle _agentHudStyle;
 
+        // Lightweight perf probe for Voronoi's share of Tick time.
         private const bool LogVoronoiTickShare = true;
         private const int VoronoiTickSharePrintIntervalSteps = 30;
         private long _tickTimingStartTimestamp;
         private long _tickVoronoiTimingTicks;
+        // Fine grid is 0.2 and Voronoi grid is 1.0, so each coarse cell spans 5x5 fine cells.
+        private const int VoronoiCellScaleFactor = 5; // fine 0.2 grid to coarse 1.0 grid
 
         private const float AnchorReachedDistance = 0.35f;
 
@@ -509,7 +512,8 @@ namespace PacMan.Agent
             Astar aStar = new Astar(
                 _obstacleMap,
                 dynamicEnemyObstacles,
-                enforceOwnTerritoryPath ? IsInOwnTerritory : null);
+                enforceOwnTerritoryPath ? IsInOwnTerritory : null,
+                VoronoiCellScaleFactor);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition, _currentVoronoi);
             _lastPlannedGoalPosition = _goalPosition;
             _lastPlannedUnsafeCellCount = CountUnsafeCellsOnPath(aStarPath);
@@ -543,6 +547,10 @@ namespace PacMan.Agent
         }
         
         
+        /// <summary>
+        /// Refreshes Voronoi data when we are on the opponent side.
+        /// Home side is treated as fully safe by omitting those cells from the Voronoi map.
+        /// </summary>
         private void UpdateVoronoiData()
         {
             long voronoiStartTimestamp = Stopwatch.GetTimestamp();
@@ -572,9 +580,15 @@ namespace PacMan.Agent
             if (isOnOpponentSide)
             {
                 var enemyPositions = visibleEnemies.Select(e => e.transform.position).ToList();
+                int midCellX = Mathf.RoundToInt(_middleInfo.MidXLocal);
+                bool isBlueTeam = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+                System.Func<Vector2Int, bool> opponentSideOnly =
+                    isBlueTeam
+                        ? cell => cell.x >= midCellX
+                        : cell => cell.x < midCellX;
         
-                // Pass the agent's position to act as the "Safe" source
-                _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions);
+                // Only compute opponent-side Voronoi; home side is implicitly fully safe and this reduces work.
+                _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions, opponentSideOnly);
             }
             else
             {
@@ -588,6 +602,9 @@ namespace PacMan.Agent
             }
         }
 
+        /// <summary>
+        /// Logs the percentage of the current Tick time that was spent in Voronoi updates.
+        /// </summary>
         private void PrintVoronoiTickShare()
         {
             if (_agent == null)
@@ -1265,6 +1282,11 @@ namespace PacMan.Agent
                 .FirstOrDefault();
         }
 
+        /// <summary>
+        /// Counts path cells that are unsafe according to the coarse Voronoi map.
+        /// </summary>
+        /// <param name="path">Planned path in world positions.</param>
+        /// <returns>Number of cells on the path that are marked unsafe.</returns>
         private int CountUnsafeCellsOnPath(List<Vector3> path)
         {
             if (path == null || path.Count == 0 || _currentVoronoi == null || _obstacleMap == null)
@@ -1274,13 +1296,32 @@ namespace PacMan.Agent
             foreach (var point in path)
             {
                 var cell = _obstacleMap.WorldToCell(point);
-                var key = new Vector2Int(cell.x, cell.z);
+                var coarseKey = new Vector2Int(
+                    FloorDiv(cell.x, VoronoiCellScaleFactor),
+                    FloorDiv(cell.z, VoronoiCellScaleFactor));
 
-                if (!_currentVoronoi.TryGetValue(key, out var cellData) || !cellData.IsSafe)
+                if (!_currentVoronoi.TryGetValue(coarseKey, out var cellData) || !cellData.IsSafe)
                     unsafeCount++;
             }
 
             return unsafeCount;
+        }
+
+        /// <summary>
+        /// Integer floor-division that remains correct for negative coordinates.
+        /// </summary>
+        /// <param name="value">Numerator.</param>
+        /// <param name="divisor">Positive divisor.</param>
+        /// <returns>Floor(value / divisor).</returns>
+        private static int FloorDiv(int value, int divisor)
+        {
+            if (divisor <= 0)
+                return value;
+
+            if (value >= 0)
+                return value / divisor;
+
+            return -(((-value) + divisor - 1) / divisor);
         }
 
         private Vector3 GetCapsuleCampPoint(Vector3 capsulePosition)

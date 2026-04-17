@@ -13,16 +13,26 @@ namespace PacMan.Agent.PathFinding
         private readonly List<Vector3> _astarExploredNodes = new();
         private readonly HashSet<Vector2Int> _dynamicBlockedCells;
         private readonly System.Func<Vector3, bool> _additionalTraversability;
+        private readonly int _voronoiCellScale;
         private Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
         
+        /// <summary>
+        /// Creates an A* planner with optional dynamic obstacles, territory constraints, and coarse Voronoi lookup scaling.
+        /// </summary>
+        /// <param name="obstacleMap">Grid used for A* traversal and world/cell conversion.</param>
+        /// <param name="dynamicBlockedPositions">Optional runtime positions to treat as blocked cells.</param>
+        /// <param name="additionalTraversability">Optional extra traversability rule evaluated in world space.</param>
+        /// <param name="voronoiCellScale">How many A* cells map to one Voronoi cell per axis.</param>
         public Astar(
             ObstacleMapV2 obstacleMap,
             IEnumerable<Vector3> dynamicBlockedPositions = null,
-            System.Func<Vector3, bool> additionalTraversability = null)
+            System.Func<Vector3, bool> additionalTraversability = null,
+            int voronoiCellScale = 1)
         {
             _obstacleMap = obstacleMap;
             _dynamicBlockedCells = new HashSet<Vector2Int>();
             _additionalTraversability = additionalTraversability;
+            _voronoiCellScale = Mathf.Max(1, voronoiCellScale);
 
             if (dynamicBlockedPositions == null || _obstacleMap == null)
                 return;
@@ -35,11 +45,12 @@ namespace PacMan.Agent.PathFinding
         }
 
         /// <summary>
-        /// Run the A* algorithm. 
+        /// Run the A* algorithm and optionally apply Voronoi danger costs.
         /// </summary>
-        /// <param name="start">Start position. </param>
-        /// <param name="goal">Goal position. </param>
-        /// <returns>The planned path. </returns>
+        /// <param name="start">World-space start position.</param>
+        /// <param name="goal">World-space goal position.</param>
+        /// <param name="voronoiMap">Optional coarse Voronoi danger map used to bias path cost.</param>
+        /// <returns>The planned path in world-space, or null if no path could be found.</returns>
         public List<Vector3> PlanPathAStar(Vector3 start, Vector3 goal, 
             Dictionary<Vector2Int, VoronoiCellData> voronoiMap = null)
         {
@@ -84,7 +95,7 @@ namespace PacMan.Agent.PathFinding
 
             // Pass the map instance so the node can check precomputed distances
             var startNode = new AStarNode(pos: startCell, goal: goalCell, obstacleMap: _obstacleMap, 
-                voronoiMap: _voronoiMap, parent: null);
+                voronoiMap: _voronoiMap, voronoiCellScale: _voronoiCellScale, parent: null);
             openSet.Add(startNode);
             
             const int maxIterations = 50000;
@@ -128,7 +139,7 @@ namespace PacMan.Agent.PathFinding
                     if (neighborNode == null)
                     {
                         neighborNode = new AStarNode(pos: neighborPos, goal: goalCell, obstacleMap: _obstacleMap, 
-                            voronoiMap:_voronoiMap, parent: currentNode);
+                            voronoiMap:_voronoiMap, voronoiCellScale: _voronoiCellScale, parent: currentNode);
                         openSet.Add(neighborNode);
                         
                         // Draw cyan lines for newly explored paths. They will vanish after 2 seconds.
@@ -171,14 +182,16 @@ namespace PacMan.Agent.PathFinding
             public readonly Vector2Int Position;
             private readonly ObstacleMapV2 _obstacleMap;
             private readonly Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
+            private readonly int _voronoiCellScale;
 
             public AStarNode(Vector2Int pos, Vector2Int goal, ObstacleMapV2 obstacleMap, 
-                Dictionary<Vector2Int, VoronoiCellData> voronoiMap, AStarNode parent=null)
+                Dictionary<Vector2Int, VoronoiCellData> voronoiMap, int voronoiCellScale, AStarNode parent=null)
             {
                 Position = pos;
                 Parent = parent;
                 _obstacleMap = obstacleMap;
                 _voronoiMap = voronoiMap;
+                _voronoiCellScale = Mathf.Max(1, voronoiCellScale);
 
                 GCost = CostToCome(parent: parent);
                 _hCost = Heuristic(goal: goal);
@@ -207,11 +220,18 @@ namespace PacMan.Agent.PathFinding
 
                 var multiplier = 1f;
                 const float maxDangerPenaltyMultiplier = 12f;
-                if (_voronoiMap != null && _voronoiMap.TryGetValue(Position, out var cellData))
+                if (_voronoiMap != null)
                 {
-                    // Smoothly scale cost so near-enemy cells are discouraged without hard blocking.
-                    float danger = Mathf.Clamp01(cellData.Danger);
-                    multiplier = Mathf.Lerp(1f, maxDangerPenaltyMultiplier, danger);
+                    var voronoiKey = new Vector2Int(
+                        FloorDiv(Position.x, _voronoiCellScale),
+                        FloorDiv(Position.y, _voronoiCellScale));
+
+                    if (_voronoiMap.TryGetValue(voronoiKey, out var cellData))
+                    {
+                        // Smoothly scale cost so near-enemy cells are discouraged without hard blocking.
+                        float danger = Mathf.Clamp01(cellData.Danger);
+                        multiplier = Mathf.Lerp(1f, maxDangerPenaltyMultiplier, danger);
+                    }
                 }
                 
                 return parent.GCost + multiplier * Vector3.Distance(parentWorld, currentWorld);
@@ -228,6 +248,21 @@ namespace PacMan.Agent.PathFinding
             }
     
             public float FCost => GCost + _hCost;
+
+            /// <summary>
+            /// Integer floor-division that stays correct for negative coordinates.
+            /// This is required when mapping fine-grid cells into coarser Voronoi cells.
+            /// </summary>
+            private static int FloorDiv(int value, int divisor)
+            {
+                if (divisor <= 0)
+                    return value;
+
+                if (value >= 0)
+                    return value / divisor;
+
+                return -(((-value) + divisor - 1) / divisor);
+            }
         }
         
         
@@ -255,10 +290,9 @@ namespace PacMan.Agent.PathFinding
         
         
         /// <summary>
-        /// Get the neighboring positions around the given position based on the specified grid size. This generates 8-connected neighbors (including diagonals).
+        /// Get 8-connected neighbors (including diagonals) for a grid cell.
         /// </summary>
-        /// <param name="pos">The node position we base the neighbors on. </param>
-        /// <param name="gridSize">The grid size. </param>
+        /// <param name="pos">The node position we base the neighbors on.</param>
         /// <returns>List of the neighbor positions. </returns>
         private static List<Vector2Int> GetNeighbors(Vector2Int pos)
         {
@@ -279,10 +313,10 @@ namespace PacMan.Agent.PathFinding
         
         
         /// <summary>
-        /// Checks if a position is traversable. 
+        /// Checks if a cell is traversable under static, dynamic, and optional extra constraints.
         /// </summary>
-        /// <param name="position">The position we want to check. </param>
-        /// <returns>True if the position is traversable and false otherwise. </returns>
+        /// <param name="cellPos">The cell coordinate to test.</param>
+        /// <returns>True if the cell can be traversed; otherwise false.</returns>
         private bool IsTraversableAStar(Vector2Int cellPos)
         {
             if (_obstacleMap == null)
@@ -312,12 +346,11 @@ namespace PacMan.Agent.PathFinding
         }
 
         /// <summary>
-        /// Finds nearest traversable cell. 
+        /// Finds the nearest traversable cell.
         /// </summary>
-        /// <param name="origin"> Coordinate to check </param>
-        /// <param name="gridSize"> Size of the grids </param>
-        /// <param name="maxRadius"> Radius to check snap </param>
-        /// <returns>True if the position is traversable and false otherwise. </returns>
+        /// <param name="origin">Cell coordinate to start from.</param>
+        /// <param name="maxRadius">Maximum search radius in cells.</param>
+        /// <returns>The nearest traversable cell, or the original cell if none is found.</returns>
         private Vector2Int FindNearestFreeCell(Vector2Int origin, int maxRadius = 8)
         {
             if (IsTraversableAStar(origin)) return origin;

@@ -51,7 +51,15 @@ namespace PacMan.Agent.PathFinding
         /// </summary>
         /// <param name="agentPosition">The world position of the current agent.</param>
         /// <param name="enemyPositions">A list of world-space positions of visible opponents.</param>
-        public Dictionary<Vector2Int, VoronoiCellData> ComputeVoronoi(Vector3 agentPosition, List<Vector3> enemyPositions)
+        /// <param name="includeCellPredicate">
+        /// Optional cell filter. If provided, only cells returning true are considered during expansion
+        /// and in the final Voronoi output.
+        /// </param>
+        /// <returns>Voronoi data keyed by cell coordinate.</returns>
+        public Dictionary<Vector2Int, VoronoiCellData> ComputeVoronoi(
+            Vector3 agentPosition,
+            List<Vector3> enemyPositions,
+            System.Func<Vector2Int, bool> includeCellPredicate = null)
         {
             var voronoiMap = new Dictionary<Vector2Int, VoronoiCellData>();
             
@@ -67,7 +75,7 @@ namespace PacMan.Agent.PathFinding
             var agentCell3D = _obstacleMap.WorldToCell(agentPosition);
             var agentCell2D = new Vector2Int(agentCell3D.x, agentCell3D.z);
             
-            if (IsFreeCell(agentCell2D))
+            if (IsCellEligible(agentCell2D, includeCellPredicate))
             {
                 agentDistances[agentCell2D] = 0f;
                 agentQueue.Enqueue(agentCell2D);
@@ -81,7 +89,7 @@ namespace PacMan.Agent.PathFinding
                 
                 // If an enemy is in the exact same cell as the agent (or another enemy), 
                 // the first one processed wins. In this setup, Agent wins ties.
-                if (!IsFreeCell(enemyCell2D) || enemyDistances.ContainsKey(enemyCell2D))
+                if (!IsCellEligible(enemyCell2D, includeCellPredicate) || enemyDistances.ContainsKey(enemyCell2D))
                 {
                     continue;
                 }
@@ -96,12 +104,15 @@ namespace PacMan.Agent.PathFinding
             };
 
             // 3. Compute separate distance fields, then derive a graded risk map.
-            RelaxDistanceField(agentDistances, agentQueue, dirs);
-            RelaxDistanceField(enemyDistances, enemyQueue, dirs);
+            RelaxDistanceField(agentDistances, agentQueue, dirs, includeCellPredicate);
+            RelaxDistanceField(enemyDistances, enemyQueue, dirs, includeCellPredicate);
 
             foreach (var cellTrav in _obstacleMap.traversabilityPerCell)
             {
                 if (cellTrav.Value != ObstacleMapV2.Traversability.Free)
+                    continue;
+
+                if (includeCellPredicate != null && !includeCellPredicate(cellTrav.Key))
                     continue;
 
                 var cell = cellTrav.Key;
@@ -163,10 +174,12 @@ namespace PacMan.Agent.PathFinding
         /// <param name="distances">Dictionary that stores the shortest discovered distance per cell.</param>
         /// <param name="queue">Frontier queue seeded with one or more source cells.</param>
         /// <param name="directions">Neighbor offsets used for propagation.</param>
+        /// <param name="includeCellPredicate">Optional cell filter used to limit traversal.</param>
         private void RelaxDistanceField(
             Dictionary<Vector2Int, float> distances,
             Queue<Vector2Int> queue,
-            IReadOnlyList<Vector2Int> directions)
+            IReadOnlyList<Vector2Int> directions,
+            System.Func<Vector2Int, bool> includeCellPredicate)
         {
             while (queue.Count > 0)
             {
@@ -176,7 +189,7 @@ namespace PacMan.Agent.PathFinding
                 foreach (var dir in directions)
                 {
                     var neighbor = current + dir;
-                    if (!IsFreeCell(neighbor))
+                    if (!IsCellEligible(neighbor, includeCellPredicate))
                         continue;
 
                     float stepDistance = (dir.x == 0 || dir.y == 0) ? 1f : 1.414f;
@@ -202,6 +215,17 @@ namespace PacMan.Agent.PathFinding
                    _obstacleMap.traversabilityPerCell != null &&
                    _obstacleMap.traversabilityPerCell.TryGetValue(cell, out var traversability) &&
                    traversability == ObstacleMapV2.Traversability.Free;
+        }
+
+        /// <summary>
+        /// Checks if a cell is traversable and, if supplied, accepted by the caller's filter.
+        /// </summary>
+        /// <param name="cell">Grid cell coordinate in XZ space.</param>
+        /// <param name="includeCellPredicate">Optional filter for restricting Voronoi coverage.</param>
+        /// <returns>True if the cell is valid for Voronoi processing.</returns>
+        private bool IsCellEligible(Vector2Int cell, System.Func<Vector2Int, bool> includeCellPredicate)
+        {
+            return IsFreeCell(cell) && (includeCellPredicate == null || includeCellPredicate(cell));
         }
 
         public void DrawVoronoiDebug(Dictionary<Vector2Int, VoronoiCellData> voronoiMap)
