@@ -46,7 +46,8 @@ namespace PacMan.Agent.RoleAssignment
                 .Where(agent =>
                     agent != null &&
                     (agent.AssignedRole == StaticRole.Attack ||
-                     (includePoweredDefenders && agent.AgentManager != null && agent.AgentManager.IsPoweredUp())))
+                     (includePoweredDefenders && agent.AgentManager != null &&
+                      (agent.AgentManager.IsPoweredUp() || agent.AgentManager.IsScared()))))
                 .ToList();
 
             if (attackers.Count == 0)
