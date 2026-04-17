@@ -206,14 +206,12 @@ namespace PacMan.Agent.PathFinding
                 Vector3 currentWorld = _obstacleMap.CellToWorld(new Vector3Int(Position.x, 0, Position.y));
 
                 var multiplier = 1f;
-                const float voronoiPenaltyMultiplier = 100f;
+                const float maxDangerPenaltyMultiplier = 12f;
                 if (_voronoiMap != null && _voronoiMap.TryGetValue(Position, out var cellData))
                 {
-                    //If being able to be caught by the opponent
-                    if (!cellData.IsSafe)
-                    {
-                        multiplier = voronoiPenaltyMultiplier; 
-                    }
+                    // Smoothly scale cost so near-enemy cells are discouraged without hard blocking.
+                    float danger = Mathf.Clamp01(cellData.Danger);
+                    multiplier = Mathf.Lerp(1f, maxDangerPenaltyMultiplier, danger);
                 }
                 
                 return parent.GCost + multiplier * Vector3.Distance(parentWorld, currentWorld);
