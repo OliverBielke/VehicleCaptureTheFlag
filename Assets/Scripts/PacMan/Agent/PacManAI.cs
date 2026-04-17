@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using Stopwatch = System.Diagnostics.Stopwatch;
 using PacMan.Interface.PacMan;
 using PacMan.Local;
 using PacMan.Agent.PathFinding;
@@ -116,11 +115,6 @@ namespace PacMan.Agent
         private bool _teammateYieldWaitingForSeparation = false;
         private static GUIStyle _agentHudStyle;
 
-        // Lightweight perf probe for Voronoi's share of Tick time.
-        private const bool LogVoronoiTickShare = true;
-        private const int VoronoiTickSharePrintIntervalSteps = 30;
-        private long _tickTimingStartTimestamp;
-        private long _tickVoronoiTimingTicks;
         // Fine grid is 0.2 and Voronoi grid is 1.0, so each coarse cell spans 5x5 fine cells.
         private const int VoronoiCellScaleFactor = 5; // fine 0.2 grid to coarse 1.0 grid
 
@@ -204,13 +198,8 @@ namespace PacMan.Agent
 
         public override PacManAction Tick()
         {
-            _tickTimingStartTimestamp = Stopwatch.GetTimestamp();
-            _tickVoronoiTimingTicks = 0L;
-
-            try
-            {
-                _agent.GetTimeRemaining();
-                _agent.GetScore();
+            _agent.GetTimeRemaining();
+            _agent.GetScore();
 
                 Vector3 velocity = _agent.GetVelocity();
                 int carriedFoodCount = _agent.GetCarriedFoodCount();
@@ -272,16 +261,10 @@ namespace PacMan.Agent
                 _previousMode = _currentMode;
                 _previousCarriedFoodCount = carriedFoodCount;
 
-                return new PacManAction
-                {
-                    Acceleration = accel
-                };
-            }
-            finally
+            return new PacManAction
             {
-                if (LogVoronoiTickShare)
-                    PrintVoronoiTickShare();
-            }
+                Acceleration = accel
+            };
         }
         private BTDecision EvaluateCurrentRoleTree()
         {
@@ -553,10 +536,6 @@ namespace PacMan.Agent
         /// </summary>
         private void UpdateVoronoiData()
         {
-            long voronoiStartTimestamp = Stopwatch.GetTimestamp();
-
-            try
-            {
             // If agent has at least two seconds of powers
             // or it is powered and there is another power pill on the map
             if (_agent.GetPowerRemainingDuration() > 2f || 
@@ -596,36 +575,6 @@ namespace PacMan.Agent
             {
                 _currentVoronoi = null;
             }
-            }
-            finally
-            {
-                if (LogVoronoiTickShare)
-                    _tickVoronoiTimingTicks += Stopwatch.GetTimestamp() - voronoiStartTimestamp;
-            }
-        }
-
-        /// <summary>
-        /// Logs the percentage of the current Tick time that was spent in Voronoi updates.
-        /// </summary>
-        private void PrintVoronoiTickShare()
-        {
-            if (_agent == null)
-                return;
-
-            int interval = Mathf.Max(1, VoronoiTickSharePrintIntervalSteps);
-            int currentStep = _agent.GetStepsSinceMatchStart();
-            if (currentStep <= 0 || currentStep % interval != 0)
-                return;
-
-            long totalTickTicks = Stopwatch.GetTimestamp() - _tickTimingStartTimestamp;
-            if (totalTickTicks <= 0)
-                return;
-
-            double tickMs = totalTickTicks * 1000.0 / Stopwatch.Frequency;
-            double voronoiMs = _tickVoronoiTimingTicks * 1000.0 / Stopwatch.Frequency;
-            double percentage = (_tickVoronoiTimingTicks * 100.0) / totalTickTicks;
-
-            Debug.Log($"[{name}] Voronoi took {percentage:F1}% of Tick ({voronoiMs:F3} ms / {tickMs:F3} ms)");
         }
         
 
