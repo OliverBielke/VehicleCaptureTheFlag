@@ -32,6 +32,9 @@ namespace PacMan.Agent.Debugging
         [Tooltip("Show the Enemy Localization Debugger")]
         public bool enemyLocalization;
 
+        [Tooltip("Show role/mode/reason labels above agents")]
+        public bool agentHud = true;
+
         private void Awake()
         {
             // Standard Singleton setup
