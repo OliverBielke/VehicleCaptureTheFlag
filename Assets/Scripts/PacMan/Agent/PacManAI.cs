@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using Stopwatch = System.Diagnostics.Stopwatch;
 using PacMan.Interface.PacMan;
 using PacMan.Local;
 using PacMan.Agent.PathFinding;
@@ -115,6 +116,11 @@ namespace PacMan.Agent
         private bool _teammateYieldWaitingForSeparation = false;
         private static GUIStyle _agentHudStyle;
 
+        private const bool LogVoronoiTickShare = true;
+        private const int VoronoiTickSharePrintIntervalSteps = 30;
+        private long _tickTimingStartTimestamp;
+        private long _tickVoronoiTimingTicks;
+
         private const float AnchorReachedDistance = 0.35f;
 
         public StaticRole AssignedRole => _assignedRole;
@@ -195,74 +201,84 @@ namespace PacMan.Agent
 
         public override PacManAction Tick()
         {
-            _agent.GetTimeRemaining();
-            _agent.GetScore();
+            _tickTimingStartTimestamp = Stopwatch.GetTimestamp();
+            _tickVoronoiTimingTicks = 0L;
 
-            Vector3 velocity = _agent.GetVelocity();
-            int carriedFoodCount = _agent.GetCarriedFoodCount();
-            bool isPoweredNow = _agent.IsPoweredUp();
-
-            int currentRespawnStep = _agent.GetLastRespawnStep();
-            if (_lastKnownRespawnStep != currentRespawnStep)
+            try
             {
-                ClearCurrentPath();
-                _lastKnownRespawnStep = currentRespawnStep;
-                _attackerThreatRetreatActive = false;
-                _previousCarriedFoodCount = carriedFoodCount;
-                _attackerRegroupAfterReturnHome = false;
-                _lastPlannedUnsafeCellCount = 0;
-                _hasLatchedHomeTarget = false;
-                _teammateYieldBackoffUntilStep = -1;
-                _teammateYieldObstacleUntilStep = -1;
-                _teammateYieldRetriggerBlockedUntilStep = -1;
-                _teammateYieldWaitingForSeparation = false;
-            }
+                _agent.GetTimeRemaining();
+                _agent.GetScore();
 
-            RegisterConsumedEnemyCapsuleFromTeamPositions();
+                Vector3 velocity = _agent.GetVelocity();
+                int carriedFoodCount = _agent.GetCarriedFoodCount();
 
-            TryTriggerTeammateYield();
+                int currentRespawnStep = _agent.GetLastRespawnStep();
+                if (_lastKnownRespawnStep != currentRespawnStep)
+                {
+                    ClearCurrentPath();
+                    _lastKnownRespawnStep = currentRespawnStep;
+                    _attackerThreatRetreatActive = false;
+                    _previousCarriedFoodCount = carriedFoodCount;
+                    _attackerRegroupAfterReturnHome = false;
+                    _lastPlannedUnsafeCellCount = 0;
+                    _hasLatchedHomeTarget = false;
+                    _teammateYieldBackoffUntilStep = -1;
+                    _teammateYieldObstacleUntilStep = -1;
+                    _teammateYieldRetriggerBlockedUntilStep = -1;
+                    _teammateYieldWaitingForSeparation = false;
+                }
 
-            if (IsTeammateYieldBackoffActive())
-            {
-                ClearCurrentPath();
+                RegisterConsumedEnemyCapsuleFromTeamPositions();
+
+                TryTriggerTeammateYield();
+
+                if (IsTeammateYieldBackoffActive())
+                {
+                    ClearCurrentPath();
+                    _previousMode = _currentMode;
+                    _btReason = "Yielding to teammate";
+                    _previousCarriedFoodCount = carriedFoodCount;
+                    return new PacManAction
+                    {
+                        Acceleration = _teammateYieldBackoffAcceleration
+                    };
+                }
+
+                bool justDepositedFood =
+                    _assignedRole == StaticRole.Attack &&
+                    _previousCarriedFoodCount > 0 &&
+                    carriedFoodCount == 0 &&
+                    IsInOwnTerritory(transform.localPosition);
+
+                if (justDepositedFood)
+                {
+                    _attackerRegroupAfterReturnHome = true;
+                    ClearCurrentPath();
+                }
+
+                _lastDecision = EvaluateCurrentRoleTree();
+                _currentMode = _lastDecision.Mode;
+
+                if (_currentMode != _previousMode)
+                {
+                    ClearCurrentPath();
+                }
+
+                Vector2 accel = ExecuteDecision(_lastDecision, velocity);
+
                 _previousMode = _currentMode;
-                _btReason = "Yielding to teammate";
                 _previousCarriedFoodCount = carriedFoodCount;
+
                 return new PacManAction
                 {
-                    Acceleration = _teammateYieldBackoffAcceleration
+                    Acceleration = accel
                 };
             }
-
-            bool justDepositedFood =
-                _assignedRole == StaticRole.Attack &&
-                _previousCarriedFoodCount > 0 &&
-                carriedFoodCount == 0 &&
-                IsInOwnTerritory(transform.localPosition);
-
-            if (justDepositedFood)
+            finally
             {
-                _attackerRegroupAfterReturnHome = true;
-                ClearCurrentPath();
+                if (LogVoronoiTickShare)
+                    PrintVoronoiTickShare();
             }
-
-            _lastDecision = EvaluateCurrentRoleTree();
-            _currentMode = _lastDecision.Mode;
-
-            if (_currentMode != _previousMode)
-            {
-                ClearCurrentPath();
-            }
-
-            Vector2 accel = ExecuteDecision(_lastDecision, velocity);
-
-            _previousMode = _currentMode;
-            _previousCarriedFoodCount = carriedFoodCount;
-
-            return new PacManAction
-            {
-                Acceleration = accel
-            };
         }
         private BTDecision EvaluateCurrentRoleTree()
         {
@@ -529,6 +545,10 @@ namespace PacMan.Agent
         
         private void UpdateVoronoiData()
         {
+            long voronoiStartTimestamp = Stopwatch.GetTimestamp();
+
+            try
+            {
             // If agent has at least two seconds of powers
             // or it is powered and there is another power pill on the map
             if (_agent.GetPowerRemainingDuration() > 2f || 
@@ -560,6 +580,33 @@ namespace PacMan.Agent
             {
                 _currentVoronoi = null;
             }
+            }
+            finally
+            {
+                if (LogVoronoiTickShare)
+                    _tickVoronoiTimingTicks += Stopwatch.GetTimestamp() - voronoiStartTimestamp;
+            }
+        }
+
+        private void PrintVoronoiTickShare()
+        {
+            if (_agent == null)
+                return;
+
+            int interval = Mathf.Max(1, VoronoiTickSharePrintIntervalSteps);
+            int currentStep = _agent.GetStepsSinceMatchStart();
+            if (currentStep <= 0 || currentStep % interval != 0)
+                return;
+
+            long totalTickTicks = Stopwatch.GetTimestamp() - _tickTimingStartTimestamp;
+            if (totalTickTicks <= 0)
+                return;
+
+            double tickMs = totalTickTicks * 1000.0 / Stopwatch.Frequency;
+            double voronoiMs = _tickVoronoiTimingTicks * 1000.0 / Stopwatch.Frequency;
+            double percentage = (_tickVoronoiTimingTicks * 100.0) / totalTickTicks;
+
+            Debug.Log($"[{name}] Voronoi took {percentage:F1}% of Tick ({voronoiMs:F3} ms / {tickMs:F3} ms)");
         }
         
 
