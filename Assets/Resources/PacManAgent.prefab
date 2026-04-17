@@ -136,6 +136,12 @@ MonoBehaviour:
   maxGhostDangerDistance: 6
   ghostDangerHysteresisDistance: 1
   defenderPurePursuitSwitchDistance: 2
+  defenderMirrorEnemySideDepth: 2
+  defenderMirrorLanePadding: 0.5
+  defenderMirrorRepathIntervalSteps: 1
+  defenderSafeMiddleDepth: 2
+  defenderSafeMiddleLanePadding: 0.4
+  defenderSafeMiddleEnemyClearance: 4
   minStepsBetweenRepaths: 12
   retargetDistanceThreshold: 0.75
   targetLockDistance: 0.35

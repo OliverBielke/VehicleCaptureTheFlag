@@ -104,6 +104,8 @@ namespace PacMan.Agent.RoleAssignment
             var attackers = _roleAssigner
                 .GetRegisteredAgentsForTeam(team)
                 .Where(agent => agent != null && agent.AssignedRole == StaticRole.Attack)
+                .OrderBy(agent => GetReferenceLaneZ(agent))
+                .ThenBy(agent => agent.transform.localPosition.z)
                 .ToList();
 
             if (attackers.Count < 2)
@@ -112,6 +114,7 @@ namespace PacMan.Agent.RoleAssignment
             var capsuleCandidates = activeEnemyCapsules
                 .Where(capsule => capsule != null && capsule.activeSelf)
                 .Distinct()
+                .OrderBy(capsule => capsule.transform.localPosition.z)
                 .ToList();
 
             if (capsuleCandidates.Count == 0)
@@ -149,6 +152,8 @@ namespace PacMan.Agent.RoleAssignment
             var attackers = _roleAssigner
                 .GetRegisteredAgentsForTeam(team)
                 .Where(agent => agent != null && agent.AssignedRole == StaticRole.Attack)
+                .OrderBy(agent => GetReferenceLaneZ(agent))
+                .ThenBy(agent => agent.transform.localPosition.z)
                 .ToList();
 
             if (attackers.Count == 0)
@@ -157,6 +162,7 @@ namespace PacMan.Agent.RoleAssignment
             var capsuleCandidates = activeEnemyCapsules
                 .Where(capsule => capsule != null && capsule.activeSelf)
                 .Distinct()
+                .OrderBy(capsule => capsule.transform.localPosition.z)
                 .ToList();
 
             if (capsuleCandidates.Count == 0)
@@ -253,6 +259,20 @@ namespace PacMan.Agent.RoleAssignment
             // when one becomes clearly closer, while still using the lane anchor
             // as a gentle tie-breaker to avoid unnecessary overlap.
             return distanceScore + laneDelta * laneDelta * 0.08f + anchorDelta * 0.03f;
+        }
+
+        private static float GetReferenceLaneZ(PacManAIDebugBT agent)
+        {
+            if (agent == null)
+                return 0f;
+
+            if (agent.HasAttackAnchor)
+                return agent.AttackAnchor.z;
+
+            if (agent.HasDefenseAnchor)
+                return agent.DefenseAnchor.z;
+
+            return agent.transform.localPosition.z;
         }
     }
 }
