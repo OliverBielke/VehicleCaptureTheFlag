@@ -575,9 +575,11 @@ namespace PacMan.Agent
             }
 
             bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
-            bool isOnOpponentSide = isBlue ? transform.localPosition.x > 0 : transform.localPosition.x < 0; 
+            bool isOnOpponentSide = isBlue ? transform.localPosition.x > 0 : transform.localPosition.x < 0;
+            bool goalOnOpponentSide = _hasGoal && !IsInOwnTerritory(_goalPosition);
+            bool shouldUseVoronoi = isOnOpponentSide || goalOnOpponentSide;
 
-            if (isOnOpponentSide)
+            if (shouldUseVoronoi)
             {
                 var enemyPositions = visibleEnemies.Select(e => e.transform.position).ToList();
                 int midCellX = Mathf.RoundToInt(_middleInfo.MidXLocal);
