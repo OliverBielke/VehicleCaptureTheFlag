@@ -571,6 +571,8 @@ namespace PacMan.Agent
             var activeFood = _agent.GetFoodObjects().FindAll(f => f.activeSelf &&
                                                 TeamAssignmentUtil.CheckTeam(f) != TeamAssignmentUtil.CheckTeam(gameObject));
             bool isPowered = _agent.IsPoweredUp();
+            bool isScared = _agent.IsScared();
+            float scaredRemaining = Mathf.Max(0f, _agent.GetScaredRemainingDuration());
             int carriedFood = _agent.GetCarriedFoodCount();
             Vector3 homeTarget = GetClosestHomePoint();
 
@@ -590,6 +592,50 @@ namespace PacMan.Agent
                 else if (bb.shouldReturnHome)
                 {
                     bb.debugReason = "Powered loot threshold reached";
+                }
+            }
+            else if (isScared)
+            {
+                if (carriedFood >= poweredReturnFoodThreshold || scaredRemaining < 2f)
+                {
+                    bb.shouldReturnHome = true;
+                    bb.debugReason = carriedFood >= poweredReturnFoodThreshold
+                        ? "Scared loot threshold reached"
+                        : "Scared ending soon, returning home";
+                }
+                else
+                {
+                    var scaredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
+                    GameObject selectedFoodTarget = scaredAssignment?.FoodTarget;
+                    string selectedFoodReason = scaredAssignment?.Reason ?? "Scared counter-raid";
+
+                    if (selectedFoodTarget != null && ShouldRetryFoodTarget(selectedFoodTarget.transform.localPosition))
+                    {
+                        GameObject alternateFoodTarget = GetAlternativeFoodTarget(activeFood, selectedFoodTarget);
+                        if (alternateFoodTarget != null)
+                        {
+                            selectedFoodTarget = alternateFoodTarget;
+                            selectedFoodReason = $"Assigned pill path too unsafe ({_lastPlannedUnsafeCellCount} unsafe cells), trying alternate";
+                        }
+                    }
+
+                    if (selectedFoodTarget != null)
+                    {
+                        bb.shouldLootWhilePowered = true;
+                        bb.enemyPillTargetPosition = selectedFoodTarget.transform.localPosition;
+                        bb.debugReason = selectedFoodReason;
+                    }
+                    else if (TryGetClosestObjectPosition(myPos, activeFood, out var fallbackScaredFoodTarget))
+                    {
+                        bb.shouldLootWhilePowered = true;
+                        bb.enemyPillTargetPosition = fallbackScaredFoodTarget;
+                        bb.debugReason = "Scared counter-raid fallback";
+                    }
+                    else
+                    {
+                        bb.shouldReturnHome = true;
+                        bb.debugReason = "Scared with no enemy pill target";
+                    }
                 }
             }
 
