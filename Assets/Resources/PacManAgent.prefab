@@ -131,6 +131,7 @@ MonoBehaviour:
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
   friendlyCapsuleObstacleInflation: 1
+  capsuleGoalIgnoreRadius: 0.6
   baseGhostDangerDistance: 5
   maxGhostDangerDistance: 6
   ghostDangerHysteresisDistance: 1
