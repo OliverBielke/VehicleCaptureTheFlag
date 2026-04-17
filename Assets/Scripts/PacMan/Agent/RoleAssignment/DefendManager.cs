@@ -8,6 +8,8 @@ namespace PacMan.Agent.RoleAssignment
 {
     public class DefendManager
     {
+        private readonly Dictionary<Team, HashSet<int>> _latchedIntrudersByTeam = new();
+
         public class Assignment
         {
             public int EnemyServerIndex;
@@ -40,7 +42,14 @@ namespace PacMan.Agent.RoleAssignment
             if (defenders.Count == 0)
                 return null;
 
+            if (!_latchedIntrudersByTeam.TryGetValue(team, out var latchedIntruders))
+            {
+                latchedIntruders = new HashSet<int>();
+                _latchedIntrudersByTeam[team] = latchedIntruders;
+            }
+
             var trackedIntruders = new Dictionary<int, Assignment>();
+            var intrudersThisTick = new HashSet<int>();
 
             foreach (var defender in defenders)
             {
@@ -50,11 +59,18 @@ namespace PacMan.Agent.RoleAssignment
 
                 foreach (var enemy in trackedEnemies)
                 {
-                    if (enemy == null || !enemy.HasPosition || enemy.IsGhost)
+                    if (enemy == null || !enemy.HasPosition)
                         continue;
 
-                    if (!IsIntrudingIntoTeamTerritory(team, enemy.Position))
+                    bool isLatched = latchedIntruders.Contains(enemy.ServerIndex);
+                    bool entersBufferedZone = !enemy.IsGhost && IsIntrudingIntoTeamTerritory(team, enemy.Position, useBuffer: true);
+                    bool remainsAcrossMidline = !enemy.IsGhost && IsIntrudingIntoTeamTerritory(team, enemy.Position, useBuffer: false);
+                    bool shouldTrack = entersBufferedZone || (isLatched && remainsAcrossMidline);
+
+                    if (!shouldTrack)
                         continue;
+
+                    intrudersThisTick.Add(enemy.ServerIndex);
 
                     if (!trackedIntruders.TryGetValue(enemy.ServerIndex, out var current))
                     {
@@ -63,7 +79,7 @@ namespace PacMan.Agent.RoleAssignment
                             EnemyServerIndex = enemy.ServerIndex,
                             TargetPosition = enemy.Position,
                             IsVisible = enemy.IsVisible,
-                            Reason = enemy.IsVisible ? "Assigned visible intruder" : "Assigned particle-filter intruder"
+                            Reason = GetAssignmentReason(enemy.IsVisible, isLatched && remainsAcrossMidline && !entersBufferedZone)
                         };
                         continue;
                     }
@@ -73,10 +89,14 @@ namespace PacMan.Agent.RoleAssignment
                     {
                         current.TargetPosition = enemy.Position;
                         current.IsVisible = enemy.IsVisible;
-                        current.Reason = enemy.IsVisible ? "Assigned visible intruder" : "Assigned particle-filter intruder";
+                        current.Reason = GetAssignmentReason(enemy.IsVisible, isLatched && remainsAcrossMidline && !entersBufferedZone);
                     }
                 }
             }
+
+            latchedIntruders.Clear();
+            foreach (int intruderId in intrudersThisTick)
+                latchedIntruders.Add(intruderId);
 
             if (trackedIntruders.Count == 0)
                 return null;
@@ -120,15 +140,24 @@ namespace PacMan.Agent.RoleAssignment
             return distanceScore + laneDelta * laneDelta * 0.35f;
         }
 
-        private static bool IsIntrudingIntoTeamTerritory(Team defendingTeam, Vector3 enemyPosition)
+        private static string GetAssignmentReason(bool isVisible, bool isLatchedRetreat)
         {
-            const float midlineBuffer = 0.3f;
+            if (isLatchedRetreat)
+                return isVisible ? "Following retreating intruder" : "Tracking retreating intruder";
+
+            return isVisible ? "Assigned visible intruder" : "Assigned particle-filter intruder";
+        }
+
+        private bool IsIntrudingIntoTeamTerritory(Team defendingTeam, Vector3 enemyPosition, bool useBuffer)
+        {
+            float midlineBuffer = useBuffer && _roleAssigner != null ? _roleAssigner.DefenderIntrusionMidlineBuffer : 0f;
+            float midXLocal = _roleAssigner != null ? _roleAssigner.MidXLocal : 0f;
 
             if (defendingTeam == Team.Blue)
-                return enemyPosition.x < midlineBuffer;
+                return enemyPosition.x < (midXLocal - midlineBuffer);
 
             if (defendingTeam == Team.Red)
-                return enemyPosition.x > -midlineBuffer;
+                return enemyPosition.x > (midXLocal + midlineBuffer);
 
             return false;
         }

@@ -17,6 +17,7 @@ namespace PacMan.Agent.RoleAssignment
         [SerializeField] private bool useMajorLanesOnlyForDefense = true;
         [SerializeField] private float singleDefenderAnchorOffset = 2f;
         [SerializeField] private float multiDefenderAnchorOffset = 2f;
+        [SerializeField] private float defenderIntrusionMidlineBuffer = 0.3f;
 
         [Header("Timing")]
         [SerializeField] private float settleTime = 0.5f;
@@ -38,6 +39,8 @@ namespace PacMan.Agent.RoleAssignment
         private float _nextAttackLaneSwitchTime;
         public DefendManager DefendManager => _defendManager;
         public AttackManager AttackManager => _attackManager;
+        public float DefenderIntrusionMidlineBuffer => defenderIntrusionMidlineBuffer;
+        public float MidXLocal => _middleInfo.MidXLocal;
 
         private void Awake()
         {

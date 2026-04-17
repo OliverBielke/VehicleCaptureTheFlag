@@ -71,6 +71,14 @@ namespace PacMan.Agent
         [SerializeField] private float maxGhostDangerDistance = 6.0f;
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
         [SerializeField] private float defenderPurePursuitSwitchDistance = 1.5f;
+        [Header("Defense Mirror")]
+        [SerializeField] private float defenderMirrorEnemySideDepth = 2.0f;
+        [SerializeField] private float defenderMirrorLanePadding = 0.5f;
+        [SerializeField] private int defenderMirrorRepathIntervalSteps = 1;
+        [Header("Defense Middle Pills")]
+        [SerializeField] private float defenderSafeMiddleDepth = 2.0f;
+        [SerializeField] private float defenderSafeMiddleLanePadding = 0.4f;
+        [SerializeField] private float defenderSafeMiddleEnemyClearance = 2.5f;
         [Header("Path Stability")]
         [SerializeField] private int minStepsBetweenRepaths = 12;
         [SerializeField] private float retargetDistanceThreshold = 0.75f;
@@ -668,9 +676,30 @@ namespace PacMan.Agent
 
             bb.enemyLikelyCrossingMyLane = false;
             bb.predictedCrossingPoint = Vector3.zero;
+            if (!bb.shouldLootWhilePowered &&
+                !bb.shouldReturnHome &&
+                !isPowered &&
+                !isScared &&
+                !bb.enemyPacmanIntruderSuspected &&
+                TryGetMirrorLaneTarget(out var mirrorTarget, out var mirrorReason))
+            {
+                bb.enemyLikelyCrossingMyLane = true;
+                bb.predictedCrossingPoint = mirrorTarget;
+                bb.debugReason = mirrorReason;
+            }
 
             bb.safeMiddlePillsAvailable = false;
             bb.safeMiddlePillPosition = Vector3.zero;
+            if (!bb.shouldLootWhilePowered &&
+                !bb.shouldReturnHome &&
+                !bb.enemyPacmanIntruderSuspected &&
+                !bb.enemyLikelyCrossingMyLane &&
+                TryGetSafeMiddlePillTarget(activeFood, out var safeMiddleTarget, out var safeMiddleReason))
+            {
+                bb.safeMiddlePillsAvailable = true;
+                bb.safeMiddlePillPosition = safeMiddleTarget;
+                bb.debugReason = safeMiddleReason;
+            }
 
             bb.formationPoint = _hasDefenseAnchor ? _defenseAnchor : myPos;
             bb.dropZonePoint = _hasDefenseAnchor ? _defenseAnchor : myPos;
@@ -1404,6 +1433,192 @@ namespace PacMan.Agent
             return SnapToNearestFreePoint(desired);
         }
 
+        private bool TryGetMirrorLaneTarget(out Vector3 mirrorTarget, out string reason)
+        {
+            mirrorTarget = Vector3.zero;
+            reason = null;
+
+            if (!_hasDefenseAnchor || _middleInfo.Lanes == null || _middleInfo.Lanes.Count == 0)
+                return false;
+
+            var trackedEnemies = GetTrackedEnemies();
+            if (trackedEnemies == null || trackedEnemies.Count == 0)
+                return false;
+
+            MapMiddleAnalyzer.Lane lane = MapMiddleAnalyzer.GetClosestLane(_defenseAnchor, _middleInfo, majorOnly: false);
+            if (lane == null)
+                return false;
+
+            float laneMinZ = lane.MidCenterLocal.z;
+            float laneMaxZ = lane.MidCenterLocal.z;
+            if (lane.LeftLocalPositions != null && lane.LeftLocalPositions.Count > 0)
+            {
+                laneMinZ = Mathf.Min(laneMinZ, lane.LeftLocalPositions.Min(p => p.z));
+                laneMaxZ = Mathf.Max(laneMaxZ, lane.LeftLocalPositions.Max(p => p.z));
+            }
+            if (lane.RightLocalPositions != null && lane.RightLocalPositions.Count > 0)
+            {
+                laneMinZ = Mathf.Min(laneMinZ, lane.RightLocalPositions.Min(p => p.z));
+                laneMaxZ = Mathf.Max(laneMaxZ, lane.RightLocalPositions.Max(p => p.z));
+            }
+
+            float paddedLaneMinZ = laneMinZ - Mathf.Max(0f, defenderMirrorLanePadding);
+            float paddedLaneMaxZ = laneMaxZ + Mathf.Max(0f, defenderMirrorLanePadding);
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            float midX = _middleInfo.MidXLocal;
+            float enemySideDepth = Mathf.Max(0.1f, defenderMirrorEnemySideDepth);
+
+            TrackedEnemyInfo bestEnemy = null;
+            float bestScore = float.MaxValue;
+
+            foreach (var enemy in trackedEnemies)
+            {
+                if (enemy == null || !enemy.HasPosition)
+                    continue;
+
+                Vector3 enemyPos = enemy.Position;
+                if (IsInOwnTerritory(enemyPos))
+                    continue;
+
+                bool insideEnemySideFront =
+                    myTeam == Team.Blue
+                        ? enemyPos.x >= midX && enemyPos.x <= (midX + enemySideDepth)
+                        : enemyPos.x <= midX && enemyPos.x >= (midX - enemySideDepth);
+
+                if (!insideEnemySideFront)
+                    continue;
+
+                if (enemyPos.z < paddedLaneMinZ || enemyPos.z > paddedLaneMaxZ)
+                    continue;
+
+                float laneScore = Mathf.Abs(enemyPos.z - _defenseAnchor.z);
+                float depthScore = Mathf.Abs(enemyPos.x - midX);
+                float score = laneScore + depthScore * 0.25f;
+
+                if (score >= bestScore)
+                    continue;
+
+                bestScore = score;
+                bestEnemy = enemy;
+            }
+
+            if (bestEnemy == null)
+                return false;
+
+            Vector3 desiredMirror = new Vector3(_defenseAnchor.x, 0f, bestEnemy.Position.z);
+            mirrorTarget = SnapToNearestFreePoint(desiredMirror);
+            reason = bestEnemy.IsVisible ? "Mirroring visible enemy in lane front" : "Mirroring tracked enemy in lane front";
+            return true;
+        }
+
+        private bool TryGetSafeMiddlePillTarget(List<GameObject> activeFood, out Vector3 targetPosition, out string reason)
+        {
+            targetPosition = Vector3.zero;
+            reason = null;
+
+            if (!_hasDefenseAnchor || activeFood == null || activeFood.Count == 0 || _middleInfo.Lanes == null || _middleInfo.Lanes.Count == 0)
+                return false;
+
+            MapMiddleAnalyzer.Lane lane = MapMiddleAnalyzer.GetClosestLane(_defenseAnchor, _middleInfo, majorOnly: false);
+            if (lane == null)
+                return false;
+
+            float laneMinZ = lane.MidCenterLocal.z;
+            float laneMaxZ = lane.MidCenterLocal.z;
+            if (lane.LeftLocalPositions != null && lane.LeftLocalPositions.Count > 0)
+            {
+                laneMinZ = Mathf.Min(laneMinZ, lane.LeftLocalPositions.Min(p => p.z));
+                laneMaxZ = Mathf.Max(laneMaxZ, lane.LeftLocalPositions.Max(p => p.z));
+            }
+            if (lane.RightLocalPositions != null && lane.RightLocalPositions.Count > 0)
+            {
+                laneMinZ = Mathf.Min(laneMinZ, lane.RightLocalPositions.Min(p => p.z));
+                laneMaxZ = Mathf.Max(laneMaxZ, lane.RightLocalPositions.Max(p => p.z));
+            }
+
+            float paddedLaneMinZ = laneMinZ - Mathf.Max(0f, defenderSafeMiddleLanePadding);
+            float paddedLaneMaxZ = laneMaxZ + Mathf.Max(0f, defenderSafeMiddleLanePadding);
+            float midX = _middleInfo.MidXLocal;
+            float middleDepth = Mathf.Max(0.1f, defenderSafeMiddleDepth);
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            var trackedEnemies = GetTrackedEnemies();
+
+            GameObject bestFood = null;
+            float bestScore = float.MaxValue;
+
+            foreach (var food in activeFood)
+            {
+                if (food == null || !food.activeSelf)
+                    continue;
+
+                Vector3 foodPos = food.transform.localPosition;
+                bool inMiddleBand =
+                    myTeam == Team.Blue
+                        ? foodPos.x >= midX && foodPos.x <= (midX + middleDepth)
+                        : foodPos.x <= midX && foodPos.x >= (midX - middleDepth);
+
+                if (!inMiddleBand)
+                    continue;
+
+                if (foodPos.z < paddedLaneMinZ || foodPos.z > paddedLaneMaxZ)
+                    continue;
+
+                bool enemyNearby = false;
+                if (trackedEnemies != null)
+                {
+                    foreach (var enemy in trackedEnemies)
+                    {
+                        if (enemy == null || !enemy.HasPosition)
+                            continue;
+
+                        if (Vector3.Distance(enemy.Position, foodPos) <= defenderSafeMiddleEnemyClearance)
+                        {
+                            enemyNearby = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (enemyNearby)
+                    continue;
+
+                float laneScore = Mathf.Abs(foodPos.z - _defenseAnchor.z);
+                float distanceScore = (transform.localPosition - foodPos).sqrMagnitude * 0.05f;
+                float depthScore = Mathf.Abs(foodPos.x - midX) * 0.25f;
+                float score = laneScore + depthScore + distanceScore;
+
+                if (score >= bestScore)
+                    continue;
+
+                bestScore = score;
+                bestFood = food;
+            }
+
+            if (bestFood == null)
+                return false;
+
+            Vector3 selectedTarget = bestFood.transform.localPosition;
+            if (ShouldRetryFoodTarget(selectedTarget))
+            {
+                GameObject alternateFood = activeFood
+                    .Where(food =>
+                        food != null &&
+                        food.activeSelf &&
+                        food != bestFood &&
+                        food.transform.localPosition.z >= paddedLaneMinZ &&
+                        food.transform.localPosition.z <= paddedLaneMaxZ)
+                    .OrderBy(food => Vector3.Distance(transform.localPosition, food.transform.localPosition))
+                    .FirstOrDefault();
+
+                if (alternateFood != null)
+                    selectedTarget = alternateFood.transform.localPosition;
+            }
+
+            targetPosition = selectedTarget;
+            reason = "Safe middle pill available";
+            return true;
+        }
+
         private Vector3 SnapToNearestFreePoint(Vector3 desired, float radiusStep = 0.2f, int maxRadiusSteps = 8)
         {
             desired.y = 0f;
@@ -1784,7 +1999,10 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+            return MoveToTarget(
+                decision.TargetPosition,
+                arriveDistance: 0.35f,
+                periodicRepathIntervalSteps: Mathf.Max(1, defenderMirrorRepathIntervalSteps));
         }
         private Vector2 ExecuteDefenderCollectSafeMiddlePills(BTDecision decision)
         {
