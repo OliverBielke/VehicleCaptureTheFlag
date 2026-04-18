@@ -40,6 +40,9 @@ namespace PacMan.Agent.PathFinding
     public class VoronoiPartitioning
     {
         private ObstacleMapV2 _obstacleMap;
+        private static int _computeLogCounter;
+        private static int _drawLogCounter;
+        private const int LogEveryNCalls = 20;
 
         public VoronoiPartitioning(ObstacleMapV2 map)
         {
@@ -62,6 +65,9 @@ namespace PacMan.Agent.PathFinding
             System.Func<Vector2Int, bool> includeCellPredicate = null)
         {
             var voronoiMap = new Dictionary<Vector2Int, VoronoiCellData>();
+            bool shouldLog = DebugManager.Instance != null &&
+                             DebugManager.Instance.voronoi &&
+                             (++_computeLogCounter % LogEveryNCalls == 0);
             
             if (_obstacleMap == null || _obstacleMap.traversabilityPerCell == null)
                 return voronoiMap;
@@ -74,14 +80,18 @@ namespace PacMan.Agent.PathFinding
             // 1. Seed the Agent (Safe Zone Source)
             var agentCell3D = _obstacleMap.WorldToCell(agentPosition);
             var agentCell2D = new Vector2Int(agentCell3D.x, agentCell3D.z);
+            bool agentSeedEligible = IsCellEligible(agentCell2D, includeCellPredicate);
             
-            if (IsCellEligible(agentCell2D, includeCellPredicate))
+            if (agentSeedEligible)
             {
                 agentDistances[agentCell2D] = 0f;
                 agentQueue.Enqueue(agentCell2D);
             }
 
             // 2. Seed all Enemies (Danger Zone Sources)
+            int enemySeedEligibleCount = 0;
+            int enemySeedDuplicateCount = 0;
+            int enemySeedRejectedCount = 0;
             foreach (var pos in enemyPositions)
             {
                 var enemyCell3D = _obstacleMap.WorldToCell(pos);
@@ -89,13 +99,21 @@ namespace PacMan.Agent.PathFinding
                 
                 // If an enemy is in the exact same cell as the agent (or another enemy), 
                 // the first one processed wins. In this setup, Agent wins ties.
-                if (!IsCellEligible(enemyCell2D, includeCellPredicate) || enemyDistances.ContainsKey(enemyCell2D))
+                if (!IsCellEligible(enemyCell2D, includeCellPredicate))
                 {
+                    enemySeedRejectedCount++;
+                    continue;
+                }
+
+                if (enemyDistances.ContainsKey(enemyCell2D))
+                {
+                    enemySeedDuplicateCount++;
                     continue;
                 }
 
                 enemyDistances[enemyCell2D] = 0f;
                 enemyQueue.Enqueue(enemyCell2D);
+                enemySeedEligibleCount++;
             }
 
             Vector2Int[] dirs = {
@@ -107,20 +125,33 @@ namespace PacMan.Agent.PathFinding
             RelaxDistanceField(agentDistances, agentQueue, dirs, includeCellPredicate);
             RelaxDistanceField(enemyDistances, enemyQueue, dirs, includeCellPredicate);
 
+            int freeCells = 0;
+            int includeFilteredOut = 0;
+            int unmappedCells = 0;
+            int safeCells = 0;
+            int unsafeCells = 0;
             foreach (var cellTrav in _obstacleMap.traversabilityPerCell)
             {
                 if (cellTrav.Value != ObstacleMapV2.Traversability.Free)
                     continue;
 
+                freeCells++;
+
                 if (includeCellPredicate != null && !includeCellPredicate(cellTrav.Key))
+                {
+                    includeFilteredOut++;
                     continue;
+                }
 
                 var cell = cellTrav.Key;
                 bool hasAgentDistance = agentDistances.TryGetValue(cell, out float agentDistance);
                 bool hasEnemyDistance = enemyDistances.TryGetValue(cell, out float enemyDistance);
 
                 if (!hasAgentDistance && !hasEnemyDistance)
+                {
+                    unmappedCells++;
                     continue;
+                }
 
                 if (!hasAgentDistance)
                     agentDistance = float.MaxValue;
@@ -130,6 +161,7 @@ namespace PacMan.Agent.PathFinding
 
                 bool isSafe = agentDistance <= enemyDistance;
                 float sourceDistance = isSafe ? agentDistance : enemyDistance;
+                if (isSafe) safeCells++; else unsafeCells++;
 
                 voronoiMap[cell] = new VoronoiCellData
                 {
@@ -139,6 +171,29 @@ namespace PacMan.Agent.PathFinding
                     EnemyDistance = enemyDistance,
                     Danger = ComputeDanger(agentDistance, enemyDistance)
                 };
+            }
+
+            if (!agentSeedEligible)
+            {
+                Debug.LogWarning($"[Voronoi] Agent seed rejected at {agentCell2D}. includeCellPredicate active={includeCellPredicate != null}");
+            }
+
+            if (enemyPositions.Count > 0 && enemySeedEligibleCount == 0)
+            {
+                Debug.LogWarning($"[Voronoi] All enemy seeds rejected. enemies={enemyPositions.Count}, rejected={enemySeedRejectedCount}, duplicates={enemySeedDuplicateCount}");
+            }
+
+            if (voronoiMap.Count == 0)
+            {
+                Debug.LogWarning("[Voronoi] Computed map is empty after filtering/expansion.");
+            }
+
+            if (shouldLog)
+            {
+                Debug.Log(
+                    $"[Voronoi] Compute summary | agentCell={agentCell2D} agentSeed={agentSeedEligible} " +
+                    $"enemyInput={enemyPositions.Count} enemySeeds={enemySeedEligibleCount} enemyRejected={enemySeedRejectedCount} enemyDup={enemySeedDuplicateCount} " +
+                    $"free={freeCells} includeFiltered={includeFilteredOut} unmapped={unmappedCells} safe={safeCells} unsafe={unsafeCells} out={voronoiMap.Count}");
             }
 
             return voronoiMap;
@@ -238,15 +293,26 @@ namespace PacMan.Agent.PathFinding
         {
             if (DebugManager.Instance == null || !DebugManager.Instance.voronoi || voronoiMap == null) return;
 
+            bool shouldLog = (++_drawLogCounter % LogEveryNCalls == 0);
+            int thresholdFilteredOut = 0;
+            int cellFilteredOut = 0;
+            int drawnCount = 0;
+
             foreach (var kvp in voronoiMap)
             {
                 // Only display cells with danger below threshold
                 if (kvp.Value.Danger > safetyThreshold)
+                {
+                    thresholdFilteredOut++;
                     continue;
+                }
                 
                 // Apply optional cell filter (e.g., opponent side only)
                 if (cellFilter != null && !cellFilter(kvp.Key))
+                {
+                    cellFilteredOut++;
                     continue;
+                }
 
                 Vector3Int cellLocation = new Vector3Int(kvp.Key.x, 0, kvp.Key.y);
                 Vector3 center = _obstacleMap.CellToWorld(cellLocation) + _obstacleMap.trueScale / 2f;
@@ -260,6 +326,21 @@ namespace PacMan.Agent.PathFinding
 
                 Gizmos.color = regionColor;
                 Gizmos.DrawCube(center, _obstacleMap.trueScale * 0.95f);
+                drawnCount++;
+            }
+
+            if (drawnCount == 0)
+            {
+                Debug.LogWarning(
+                    $"[Voronoi] Draw produced no visible cells | input={voronoiMap.Count} threshold={safetyThreshold:0.00} " +
+                    $"dangerFiltered={thresholdFilteredOut} cellFiltered={cellFilteredOut} hasCellFilter={cellFilter != null}");
+            }
+
+            if (shouldLog)
+            {
+                Debug.Log(
+                    $"[Voronoi] Draw summary | input={voronoiMap.Count} drawn={drawnCount} threshold={safetyThreshold:0.00} " +
+                    $"dangerFiltered={thresholdFilteredOut} cellFiltered={cellFilteredOut} hasCellFilter={cellFilter != null}");
             }
         }
     }

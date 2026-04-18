@@ -72,7 +72,8 @@ namespace PacMan.Agent
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
         [SerializeField] private float defenderPurePursuitSwitchDistance = 1.5f;
         [Header("Voronoi Safety")]
-        [SerializeField] private float voronoiSafetyThreshold = 0.5f;
+        private float _voronoiSafetyThreshold = 0.5f;
+        private int _voronoiUpdateIntervalSteps = 3;
         [Header("Defense Mirror")]
         [SerializeField] private float defenderMirrorEnemySideDepth = 2.0f;
         [SerializeField] private float defenderMirrorLanePadding = 0.5f;
@@ -114,6 +115,7 @@ namespace PacMan.Agent
         private int _previousCarriedFoodCount = 0;
         private bool _attackerRegroupAfterReturnHome = false;
         private int _lastPlannedUnsafeCellCount = 0;
+        private int _lastVoronoiUpdateStep = -99999;
         private Vector3 _lastPlannedGoalPosition = Vector3.zero;
         private bool _hasLatchedHomeTarget = false;
         private Vector3 _latchedHomeTarget = Vector3.zero;
@@ -541,8 +543,8 @@ namespace PacMan.Agent
         
         
         /// <summary>
-        /// Refreshes Voronoi data when we are on the opponent side.
-        /// Home side is treated as fully safe by omitting those cells from the Voronoi map.
+        /// Refreshes cached Voronoi data on a staggered cadence.
+        /// Voronoi is kept available for enemy food/capsule evaluation even while standing on the home side.
         /// </summary>
         private void UpdateVoronoiData()
         {
@@ -554,37 +556,62 @@ namespace PacMan.Agent
                 _currentVoronoi = null;
                 return;
             }
-            
-            var visibleEnemies = _agent.GetVisibleEnemyAgents();
-    
-            if (visibleEnemies == null || visibleEnemies.Count == 0)
+
+            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+            bool isOnOpponentSide = isBlue ? transform.localPosition.x > 0 : transform.localPosition.x < 0;
+            bool goalOnOpponentSide = _hasGoal && !IsInOwnTerritory(_goalPosition);
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            bool hasEnemyFoodTargets = _agent.GetFoodObjects().Any(food =>
+                food != null && food.activeSelf && TeamAssignmentUtil.CheckTeam(food) != myTeam);
+            bool hasEnemyCapsuleTargets = _agent.GetCapsuleObjects().Any(capsule =>
+                capsule != null && capsule.activeSelf && TeamAssignmentUtil.CheckTeam(capsule) != myTeam);
+            bool shouldEvaluateEnemyObjectives = _assignedRole == StaticRole.Attack && (hasEnemyFoodTargets || hasEnemyCapsuleTargets);
+            bool shouldUseVoronoi = isOnOpponentSide || goalOnOpponentSide || shouldEvaluateEnemyObjectives;
+
+            if (!shouldUseVoronoi)
             {
                 _currentVoronoi = null;
                 return;
             }
 
-            bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
-            bool isOnOpponentSide = isBlue ? transform.localPosition.x > 0 : transform.localPosition.x < 0;
-            bool goalOnOpponentSide = _hasGoal && !IsInOwnTerritory(_goalPosition);
-            bool shouldUseVoronoi = isOnOpponentSide || goalOnOpponentSide;
+            int interval = Mathf.Max(1, _voronoiUpdateIntervalSteps);
+            int currentStep = _agent.GetStepsSinceMatchStart();
+            int phase = GetVoronoiUpdatePhase(interval);
+            bool mustBootstrap = _currentVoronoi == null;
+            bool dueByInterval = (currentStep - _lastVoronoiUpdateStep) >= interval;
+            bool onStaggerSlot = ((currentStep + phase) % interval) == 0;
 
-            if (shouldUseVoronoi)
-            {
-                var enemyPositions = visibleEnemies.Select(e => e.transform.position).ToList();
-                int midCellX = Mathf.RoundToInt(_middleInfo.MidXLocal);
-                bool isBlueTeam = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
-                System.Func<Vector2Int, bool> opponentSideOnly =
-                    isBlueTeam
-                        ? cell => cell.x >= midCellX
-                        : cell => cell.x < midCellX;
-        
-                // Only compute opponent-side Voronoi; home side is implicitly fully safe and this reduces work.
-                _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions, opponentSideOnly);
-            }
-            else
-            {
-                _currentVoronoi = null;
-            }
+            if (!mustBootstrap && !(dueByInterval && onStaggerSlot))
+                return;
+
+            var visibleEnemies = _agent.GetVisibleEnemyAgents();
+            var enemyPositions = visibleEnemies != null
+                ? visibleEnemies.Select(e => e.transform.position).ToList()
+                : new List<Vector3>();
+
+            // Compute full Voronoi and keep visualization filtering in OnDrawGizmos.
+            _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions);
+            _lastVoronoiUpdateStep = currentStep;
+        }
+
+        /// <summary>
+        /// Computes a stable update offset so Voronoi refreshes are staggered across agents.
+        /// </summary>
+        /// <param name="interval">The configured update interval in steps.</param>
+        /// <returns>
+        /// A deterministic phase offset derived from the agent server index when available,
+        /// otherwise from the local instance ID.
+        /// </returns>
+        private int GetVoronoiUpdatePhase(int interval)
+        {
+            if (interval <= 1)
+                return 0;
+
+            int stableId = (_agent != null && _agent.serverIndex >= 0)
+                ? _agent.serverIndex
+                : Mathf.Abs(GetInstanceID());
+
+            return Mathf.Abs(stableId) % interval;
         }
         
 
@@ -1348,7 +1375,7 @@ namespace PacMan.Agent
         private bool IsFoodCellSafe(Vector3 foodPosition)
         {
             if (TryGetFoodCellData(foodPosition, out var cellData))
-                return cellData.Danger <= voronoiSafetyThreshold;
+                return cellData.Danger <= _voronoiSafetyThreshold;
 
             return true;
         }
@@ -2181,7 +2208,7 @@ namespace PacMan.Agent
                         ? cell => cell.x >= midCellX
                         : cell => cell.x < midCellX;
                 
-                _voronoiPartitioning.DrawVoronoiDebug(_currentVoronoi, voronoiSafetyThreshold, opponentSideFilter);
+                _voronoiPartitioning.DrawVoronoiDebug(_currentVoronoi, _voronoiSafetyThreshold, opponentSideFilter);
             }
         }
 
