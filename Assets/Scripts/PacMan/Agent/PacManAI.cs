@@ -72,7 +72,7 @@ namespace PacMan.Agent
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
         [SerializeField] private float defenderPurePursuitSwitchDistance = 1.5f;
         [Header("Voronoi Safety")]
-        private float _voronoiSafetyThreshold = 0.5f;
+        private float _voronoiSafetyThreshold = 0.7f;
         private int _voronoiUpdateIntervalSteps = 3;
         [Header("Defense Mirror")]
         [SerializeField] private float defenderMirrorEnemySideDepth = 2.0f;
@@ -1311,8 +1311,8 @@ namespace PacMan.Agent
 
             return activeFood
                 .Where(food => food != null && food.activeSelf && food != currentTarget)
-                .OrderByDescending(food => IsFoodCellSafe(food.transform.localPosition))
-                .ThenBy(food => GetFoodDanger(food.transform.localPosition))
+                .Where(food => IsFoodCellSafe(food.transform.localPosition))
+                .OrderBy(food => GetFoodDanger(food.transform.localPosition))
                 .ThenBy(food => Vector3.Distance(transform.localPosition, food.transform.localPosition))
                 .Take(Mathf.Max(1, pillCandidateAttempts))
                 .FirstOrDefault();
@@ -1340,10 +1340,21 @@ namespace PacMan.Agent
             if (candidates.Count == 0)
                 return null;
 
+            var safeCandidates = candidates
+                .Where(food => IsFoodCellSafe(food.transform.localPosition))
+                .ToList();
+
+            if (safeCandidates.Count == 0)
+            {
+                if (preferredTarget != null && IsFoodCellSafe(preferredTarget.transform.localPosition))
+                    return preferredTarget;
+
+                return null;
+            }
+
             // Safety dominates; distance is only a tie-breaker among equally safe pills.
-            var best = candidates
-                .OrderByDescending(food => IsFoodCellSafe(food.transform.localPosition))
-                .ThenBy(food => GetFoodDanger(food.transform.localPosition))
+            var best = safeCandidates
+                .OrderBy(food => GetFoodDanger(food.transform.localPosition))
                 .ThenBy(food => (food.transform.localPosition - origin).sqrMagnitude)
                 .FirstOrDefault();
 
@@ -1376,6 +1387,10 @@ namespace PacMan.Agent
         {
             if (TryGetFoodCellData(foodPosition, out var cellData))
                 return cellData.Danger <= _voronoiSafetyThreshold;
+
+            // When a Voronoi map exists, unknown cells are treated as unsafe to avoid risky target picks.
+            if (_currentVoronoi != null && _currentVoronoi.Count > 0)
+                return false;
 
             return true;
         }
