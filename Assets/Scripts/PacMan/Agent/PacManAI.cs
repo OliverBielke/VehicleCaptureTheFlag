@@ -72,7 +72,7 @@ namespace PacMan.Agent
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
         [SerializeField] private float defenderPurePursuitSwitchDistance = 1.5f;
         [Header("Voronoi Safety")]
-        private float _voronoiSafetyThreshold = 0.7f;
+        private float _voronoiSafetyThreshold = 0.5f;
         private int _voronoiUpdateIntervalSteps = 3;
         [Header("Defense Mirror")]
         [SerializeField] private float defenderMirrorEnemySideDepth = 2.0f;
