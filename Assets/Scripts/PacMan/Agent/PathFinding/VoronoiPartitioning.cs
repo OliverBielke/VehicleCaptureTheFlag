@@ -156,16 +156,19 @@ namespace PacMan.Agent.PathFinding
         {
             if (float.IsPositiveInfinity(enemyDistance) || enemyDistance >= float.MaxValue * 0.5f)
                 return 0f;
-
+            
             if (float.IsPositiveInfinity(agentDistance) || agentDistance >= float.MaxValue * 0.5f)
                 return 1f;
 
-            // Risk is higher when close to enemies and when enemy reaches the cell before us.
-            float margin = enemyDistance - agentDistance;
-            float enemyProximityRisk = Mathf.Exp(-enemyDistance / 4f);
-            float ownershipRisk = 1f / (1f + Mathf.Exp(margin / 1.2f));
+            // Strongly damp danger with enemy distance so far-away enemies do not saturate risk.
+            float enemyProximityRisk = 1f / (1f + enemyDistance * enemyDistance * 0.75f);
 
-            return Mathf.Clamp01(enemyProximityRisk * 0.65f + ownershipRisk * 0.35f);
+            // Ownership influence is secondary: enemy-ahead cells are riskier, but still bounded by proximity.
+            float margin = enemyDistance - agentDistance;
+            float ownershipRisk = 1f / (1f + Mathf.Exp(margin / 1.6f));
+            
+            float combined = enemyProximityRisk * 0.35f + ownershipRisk * 0.65f;
+            return Mathf.Clamp01(combined);
         }
 
         /// <summary>
@@ -228,12 +231,23 @@ namespace PacMan.Agent.PathFinding
             return IsFreeCell(cell) && (includeCellPredicate == null || includeCellPredicate(cell));
         }
 
-        public void DrawVoronoiDebug(Dictionary<Vector2Int, VoronoiCellData> voronoiMap)
+        public void DrawVoronoiDebug(
+            Dictionary<Vector2Int, VoronoiCellData> voronoiMap, 
+            float safetyThreshold = 0.5f,
+            System.Func<Vector2Int, bool> cellFilter = null)
         {
             if (DebugManager.Instance == null || !DebugManager.Instance.voronoi || voronoiMap == null) return;
 
             foreach (var kvp in voronoiMap)
             {
+                // Only display cells with danger below threshold
+                if (kvp.Value.Danger > safetyThreshold)
+                    continue;
+                
+                // Apply optional cell filter (e.g., opponent side only)
+                if (cellFilter != null && !cellFilter(kvp.Key))
+                    continue;
+
                 Vector3Int cellLocation = new Vector3Int(kvp.Key.x, 0, kvp.Key.y);
                 Vector3 center = _obstacleMap.CellToWorld(cellLocation) + _obstacleMap.trueScale / 2f;
                 

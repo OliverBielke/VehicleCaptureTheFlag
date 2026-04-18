@@ -71,6 +71,8 @@ namespace PacMan.Agent
         [SerializeField] private float maxGhostDangerDistance = 6.0f;
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
         [SerializeField] private float defenderPurePursuitSwitchDistance = 1.5f;
+        [Header("Voronoi Safety")]
+        [SerializeField] private float voronoiSafetyThreshold = 0.5f;
         [Header("Defense Mirror")]
         [SerializeField] private float defenderMirrorEnemySideDepth = 2.0f;
         [SerializeField] private float defenderMirrorLanePadding = 0.5f;
@@ -1339,14 +1341,14 @@ namespace PacMan.Agent
         }
 
         /// <summary>
-        /// Checks whether the Voronoi cell containing the food is marked safe for this agent.
+        /// Checks whether the Voronoi cell containing the food is safe based on danger level.
         /// </summary>
         /// <param name="foodPosition">Food world/local position to evaluate.</param>
-        /// <returns>True if the cell is safe, or if no Voronoi data is available.</returns>
+        /// <returns>True if the danger level is below the threshold, or if no Voronoi data is available.</returns>
         private bool IsFoodCellSafe(Vector3 foodPosition)
         {
             if (TryGetFoodCellData(foodPosition, out var cellData))
-                return cellData.IsSafe;
+                return cellData.Danger <= voronoiSafetyThreshold;
 
             return true;
         }
@@ -2171,7 +2173,15 @@ namespace PacMan.Agent
             
             if (_voronoiPartitioning != null && _currentVoronoi != null)
             {
-                _voronoiPartitioning.DrawVoronoiDebug(_currentVoronoi);
+                // Filter to show only opponent side cells that are safe enough
+                int midCellX = Mathf.RoundToInt(_middleInfo.MidXLocal);
+                bool isBlueTeam = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
+                System.Func<Vector2Int, bool> opponentSideFilter =
+                    isBlueTeam
+                        ? cell => cell.x >= midCellX
+                        : cell => cell.x < midCellX;
+                
+                _voronoiPartitioning.DrawVoronoiDebug(_currentVoronoi, voronoiSafetyThreshold, opponentSideFilter);
             }
         }
 
