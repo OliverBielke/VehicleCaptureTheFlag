@@ -142,17 +142,8 @@ namespace PacMan
                 ApplyAgentState(gameManager.agents[i].GetComponent<PacManAgentManager>(), readState.Agents[i], i);
             }
 
-            var foodCount = Math.Min(readState.Food.Count, gameManager.foodList.Count);
-            for (int i = 0; i < foodCount; i++)
-            {
-                ApplyEdibleState(gameManager.foodList[i], readState.Food[i]);
-            }
-
-            var capsuleCount = Math.Min(readState.Capsules.Count, gameManager.capsules.Count);
-            for (int i = 0; i < capsuleCount; i++)
-            {
-                ApplyEdibleState(gameManager.capsules[i], readState.Capsules[i]);
-            }
+            ApplyEdibleStates(gameManager.foodList, readState.Food);
+            ApplyEdibleStates(gameManager.capsules, readState.Capsules);
         }
 
         private static ProtoPacManState PacManStateFromObject(PacManAgentManager agent)
@@ -280,6 +271,22 @@ namespace PacMan
             }
 
             gameObject.SetActive(edible.IsActive);
+        }
+
+        private static void ApplyEdibleStates(IReadOnlyList<GameObject> gameObjects, IReadOnlyList<ProtoEdible> edibleStates)
+        {
+            var sharedCount = Math.Min(edibleStates.Count, gameObjects.Count);
+            for (var i = 0; i < sharedCount; i++)
+            {
+                ApplyEdibleState(gameObjects[i], edibleStates[i]);
+            }
+
+            // If the authoritative state contains fewer edibles than the local scene,
+            // hide the extras so stale objects cannot linger on clients.
+            for (var i = sharedCount; i < gameObjects.Count; i++)
+            {
+                gameObjects[i].SetActive(false);
+            }
         }
 
         private static ProtoPacManObservations ObservationsFromValue(PacManObservations observations)
