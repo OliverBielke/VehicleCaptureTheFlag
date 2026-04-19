@@ -38,9 +38,14 @@ namespace PacMan.Agent.PathFinding
         private static float _sharedStepZ;
         private static int _cachedMapInstanceId = -1;
         private static float _cachedCarHeight = -1f;
-        public CGSmoother(float carHeight, Collider map)
+        private readonly float maxSpeed;
+        private readonly float maxAcceleration;
+
+        public CGSmoother(float carHeight, Collider map, float maxSpeed, float maxAcceleration)
         {
             this.carHeight = carHeight;
+            this.maxSpeed = maxSpeed;
+            this.maxAcceleration = maxAcceleration;
 
             EnsureDistanceMapCached(map, carHeight);
 
@@ -181,7 +186,7 @@ namespace PacMan.Agent.PathFinding
             {
                 var spacing = 1; // Changed to 5 for faster runtime, original was 2
                 path = GetResampledPath(path, spacing);
-                targetSpeed = DroneControlling.GenerateTargetSpeeds(path);
+                targetSpeed = DroneControlling.GenerateTargetSpeeds(path, maxSpeed, maxAcceleration);
                 path = RunGradientDescent(path, targetSpeed);
                 iter++;
             }

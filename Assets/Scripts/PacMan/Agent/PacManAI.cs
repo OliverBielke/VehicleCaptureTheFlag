@@ -11,6 +11,7 @@ using Scripts.Map;
 using PacMan.Agent.EnemyLocalization;
 using PacMan.Agent.RoleAssignment;
 using PacMan.Agent.Debugging;
+using PacMan.Game;
 
 namespace PacMan.Agent
 {        
@@ -553,6 +554,14 @@ namespace PacMan.Agent
         private bool MakePath(bool ownTerritoryOnly = false)
         {
             _initialDroneState = _agent.transform;
+            var movementController = _initialDroneState.GetComponent<PacManMovementController>();
+            if (movementController == null)
+            {
+                Debug.LogWarning($"MakePath failed: missing {nameof(PacManMovementController)} on agent {name}.");
+                _waypoints = null;
+                _droneControlling = null;
+                return false;
+            }
             var curPos = _initialDroneState.localPosition;
             var dynamicPathObstacles = BuildDynamicPathObstacles(
                 _goalPosition,
@@ -615,7 +624,7 @@ namespace PacMan.Agent
             }
 
             _waypoints = nodes;
-            _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState);
+            _droneControlling = new DroneControlling(_waypoints, _goalPosition, _initialDroneState, movementController);
             _lastPathPlanStep = _agent.GetStepsSinceMatchStart();
             return true;
         }

@@ -3,6 +3,7 @@ using UnityEngine;
 using PacMan.Agent.PathFinding;
 using System;
 using Scripts.Vehicle;
+using PacMan.Game;
 
 namespace PacMan.Agent.PathFollowing
 {
@@ -13,9 +14,8 @@ namespace PacMan.Agent.PathFollowing
         private const float K_D_POSITION = 1.5f;
         private const float K_P_VELOCITY = 15f;
         private const float K_D_VELOCITY = 0f;
-        private const float MAX_DRONE_ACCEL = 15f;
-        private const float MAX_DRONE_SPEED = 15f;
         private const float K_VELOCITY_DIRECTION = 15.0f;
+        private readonly PacManMovementController movementController;
         public bool HasReachedGoal = false;
         public float StoppingDistance = 0.2f; // Adjust based on the size of your car/goal
         
@@ -37,18 +37,19 @@ namespace PacMan.Agent.PathFollowing
         private Vector2 lastVelError { get; set; }
         private Vector2 lastPosError { get; set; }
         
-        public DroneControlling(List<Node> waypoints, Vector3 goal, Transform droneState)
+        public DroneControlling(List<Node> waypoints, Vector3 goal, Transform droneState, PacManMovementController movementController)
         {
             this.waypoints = waypoints;
             this.goal = goal;
-            currDroneState = droneState;       
+            currDroneState = droneState;
+            this.movementController = movementController;
             bestStartIndex = 0;
             targetDistance = 0.5f;
             lastVelError = Vector2.zero;
             lastPosError = Vector2.zero;
             h = 0f;
             v = 0f;
-            targetSpeeds = GenerateTargetSpeeds(waypoints);
+            targetSpeeds = GenerateTargetSpeeds(waypoints, movementController.max_speed, movementController.max_acceleration);
         }
         
         public void PDCalculateMove(Transform droneTransform)
@@ -85,8 +86,9 @@ namespace PacMan.Agent.PathFollowing
             //Debug.Log("Target Speed: " + targetSpeed);
             //Debug.Log("Current Speed" + currentVel.magnitude);
 
-            h = Mathf.Clamp(total.x / MAX_DRONE_ACCEL, -1f, 1f);
-            v = Mathf.Clamp(total.y / MAX_DRONE_ACCEL, -1f, 1f);
+            var maxAcceleration = Mathf.Max(0.0001f, movementController.max_acceleration);
+            h = Mathf.Clamp(total.x / maxAcceleration, -1f, 1f);
+            v = Mathf.Clamp(total.y / maxAcceleration, -1f, 1f);
 
             lastVelError = velocityError;
             lastPosError = positionError;
@@ -127,11 +129,12 @@ namespace PacMan.Agent.PathFollowing
             return targetSpeed;
         }
         
-        public static List<float> GenerateTargetSpeeds(List<Node> path)
+        public static List<float> GenerateTargetSpeeds(List<Node> path, float maxSpeed, float maxAcceleration)
         {
             // Kapania, Subosits, Gerdes "A Sequential Two-Step Algorithm for Fast Generation of Vehicle Racing Trajectories"
             
-            var maxAcceleration = MAX_DRONE_ACCEL;
+            maxAcceleration = Mathf.Max(0.0001f, maxAcceleration);
+            maxSpeed = Mathf.Max(0f, maxSpeed);
             
             List<float> speeds = new();
             speeds.Add(0);
@@ -149,15 +152,15 @@ namespace PacMan.Agent.PathFollowing
                 
                 if (curvature < 0.001f)
                 {
-                    speeds.Add(MAX_DRONE_SPEED);
+                    speeds.Add(maxSpeed);
                     continue;
                 }
-                var maxSpeed = Mathf.Sqrt(maxAcceleration/curvature);
-                maxSpeed = Mathf.Min(MAX_DRONE_SPEED, maxSpeed);
-                speeds.Add(maxSpeed);
+                var segmentMaxSpeed = Mathf.Sqrt(maxAcceleration / curvature);
+                segmentMaxSpeed = Mathf.Min(maxSpeed, segmentMaxSpeed);
+                speeds.Add(segmentMaxSpeed);
             }
-            speeds[0] = MAX_DRONE_SPEED;
-            speeds.Add(MAX_DRONE_SPEED);
+            speeds[0] = maxSpeed;
+            speeds.Add(maxSpeed);
             
             // Backwards
             for (var i = path.Count - 2; i >= 0; i--)
