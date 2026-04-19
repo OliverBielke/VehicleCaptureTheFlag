@@ -62,9 +62,11 @@ namespace PacMan.Agent.PathFinding
             
             var startCell = new Vector2Int(startCell3D.x, startCell3D.z);
             var goalCell = new Vector2Int(goalCell3D.x, goalCell3D.z);
+            var originalStartCell = startCell;
+            var originalGoalCell = goalCell;
 
             startCell = FindNearestFreeCell(startCell);
-
+            goalCell = FindNearestFreeCell(goalCell);
             // Get true world positions for precise debug drawing
             var startWorld = _obstacleMap.CellToWorld(new Vector3Int(startCell.x, 0, startCell.y));
             var goalWorld = _obstacleMap.CellToWorld(new Vector3Int(goalCell.x, 0, goalCell.y));
@@ -82,12 +84,11 @@ namespace PacMan.Agent.PathFinding
             
             if (!IsTraversableAStar(goalCell))
             {
-                goalCell = FindNearestFreeCell(goalCell);
-                if (!IsTraversableAStar(goalCell))
-                {
-                    Debug.LogError($"A* goal {goalCell} is not traversable. Not even surrounding nodes. Can't plan path.");
-                    return null;
-                }
+                Debug.LogError(
+                    $"A* goal {goalCell} is not traversable. Not even surrounding nodes. Can't plan path. " +
+                    $"startCell={originalStartCell}->{startCell} goalCell={originalGoalCell}->{goalCell} " +
+                    $"dynamicBlockedCells={_dynamicBlockedCells.Count} hasExtraConstraint={_additionalTraversability != null}");
+                return null;
             }
             
             List<AStarNode> openSet = new();
@@ -165,7 +166,10 @@ namespace PacMan.Agent.PathFinding
                 }
             }
             
-            Debug.LogError($"A* failed after {iter} iterations. Explored {_astarExploredNodes.Count} nodes, OpenSet empty: {openSet.Count == 0}");
+            Debug.LogError(
+                $"A* failed after {iter} iterations. Explored {_astarExploredNodes.Count} nodes, OpenSet empty: {openSet.Count == 0}. " +
+                $"startCell={originalStartCell}->{startCell} goalCell={originalGoalCell}->{goalCell} " +
+                $"dynamicBlockedCells={_dynamicBlockedCells.Count} hasExtraConstraint={_additionalTraversability != null}");
             return null;
         }
         
@@ -339,9 +343,7 @@ namespace PacMan.Agent.PathFinding
 
         private Vector2Int ToCellKey(Vector3 localPosition)
         {
-            var cellPos = Vector3Int.FloorToInt(Vector3.Scale(
-                localPosition,
-                new Vector3(1 / _obstacleMap.trueScale.x, 1 / _obstacleMap.trueScale.y, 1 / _obstacleMap.trueScale.z)));
+            var cellPos = _obstacleMap.WorldToCell(localPosition);
             return new Vector2Int(cellPos.x, cellPos.z);
         }
 
@@ -351,7 +353,7 @@ namespace PacMan.Agent.PathFinding
         /// <param name="origin">Cell coordinate to start from.</param>
         /// <param name="maxRadius">Maximum search radius in cells.</param>
         /// <returns>The nearest traversable cell, or the original cell if none is found.</returns>
-        private Vector2Int FindNearestFreeCell(Vector2Int origin, int maxRadius = 8)
+        private Vector2Int FindNearestFreeCell(Vector2Int origin, int maxRadius = 12)
         {
             if (IsTraversableAStar(origin)) return origin;
 

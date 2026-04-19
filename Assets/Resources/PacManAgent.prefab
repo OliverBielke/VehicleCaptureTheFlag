@@ -127,7 +127,7 @@ MonoBehaviour:
   powerPillBaseTimeSeconds: 25
   powerPillExtraTimeSeconds: 20
   poweredReturnFoodThreshold: 6
-  nextCapsuleGrabLeadTime: 0.15
+  nextCapsuleGrabLeadTime: 0.5
   consumedCapsuleContactDistance: 0.25
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
@@ -136,7 +136,7 @@ MonoBehaviour:
   lateGameReturnHomeBaseSeconds: 20
   lateGameReturnHomeBufferSeconds: 6
   lateGameReturnHomeHorizontalSpeed: 2.34
-  friendlyCapsuleObstacleInflation: 1
+  friendlyCapsuleObstacleInflation: 0.6
   capsuleGoalIgnoreRadius: 0.6
   baseGhostDangerDistance: 0
   maxGhostDangerDistance: 4.5

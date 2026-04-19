@@ -71,7 +71,7 @@ namespace PacMan.Agent
         [SerializeField] private float lateGameReturnHomeBaseSeconds = 20f;
         [SerializeField] private float lateGameReturnHomeBufferSeconds = 6f;
         [SerializeField] private float lateGameReturnHomeHorizontalSpeed = 2.34f;
-        [SerializeField] private float friendlyCapsuleObstacleInflation = 1.0f;
+        [SerializeField] private float friendlyCapsuleObstacleInflation = 0.4f;
         [SerializeField] private float capsuleGoalIgnoreRadius = 0.6f;
         [SerializeField] private float baseGhostDangerDistance = 0f;
         [SerializeField] private float maxGhostDangerDistance = 4.5f;
@@ -551,17 +551,17 @@ namespace PacMan.Agent
         {
             _initialDroneState = _agent.transform;
             var curPos = _initialDroneState.localPosition;
-            var dynamicEnemyObstacles = GetTrackedEnemies()
-                .Where(enemy => enemy != null && enemy.HasPosition)
-                .Where(enemy => Vector3.Distance(enemy.Position, _goalPosition) > 0.35f)
-                .Select(enemy => enemy.Position)
-                .Concat(GetInflatedCapsuleObstaclePoints())
-                .ToList();
+            var capsuleObstaclePoints = GetInflatedCapsuleObstaclePoints().ToList();
+            int originalCapsuleObstacleCount = capsuleObstaclePoints.Count;
+            var dynamicPathObstacles = new List<Vector3>(capsuleObstaclePoints);
+            int teammateYieldObstacleCount = 0;
 
             if (IsTeammateYieldObstacleActive() &&
                 Vector3.Distance(_teammateYieldObstaclePosition, _goalPosition) > teammateYieldGoalIgnoreRadius)
             {
-                dynamicEnemyObstacles.AddRange(GetInflatedTeammateYieldObstaclePoints());
+                var yieldObstaclePoints = GetInflatedTeammateYieldObstaclePoints().ToList();
+                teammateYieldObstacleCount = yieldObstaclePoints.Count;
+                dynamicPathObstacles.AddRange(yieldObstaclePoints);
             }
 
             var startTrav = _obstacleMap.GetLocalPointTraversibility(curPos);
@@ -582,16 +582,23 @@ namespace PacMan.Agent
 
             Astar aStar = new Astar(
                 _obstacleMap,
-                dynamicEnemyObstacles,
+                dynamicPathObstacles,
                 enforceOwnTerritoryPath ? IsInOwnTerritory : null,
                 VoronoiCellScaleFactor);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition, _currentVoronoi);
+
             _lastPlannedGoalPosition = _goalPosition;
             _lastPlannedUnsafeCellCount = CountUnsafeCellsOnPath(aStarPath);
 
             if (aStarPath == null || aStarPath.Count < 2)
             {
-                Debug.LogWarning("MakePath failed: no valid A* path.");
+                Debug.LogWarning(
+                    $"MakePath failed: no valid A* path. " +
+                    $"agent={name} role={_assignedRole} mode={_currentMode} decision={_lastDecision?.DebugLabel ?? "-"} reason={_btReason} " +
+                    $"ownTerritoryOnly={ownTerritoryOnly} enforcedOwnTerritory={enforceOwnTerritoryPath} " +
+                    $"start={curPos} goal={_goalPosition} startTrav={startTrav} goalTrav={goalTrav} " +
+                    $"dynamicObstacles={dynamicPathObstacles.Count} capsuleObstacles={originalCapsuleObstacleCount} " +
+                    $"yieldObstacles={teammateYieldObstacleCount} activeCapsules={GetActiveCapsules().Count}");
                 _waypoints = null;
                 _droneControlling = null;
                 return false;
@@ -2208,9 +2215,20 @@ namespace PacMan.Agent
         private Vector3 SnapToNearestFreePoint(Vector3 desired, float radiusStep = 0.2f, int maxRadiusSteps = 8)
         {
             desired.y = 0f;
+            return SnapToNearestFreePoint(desired, null, radiusStep, maxRadiusSteps);
+        }
+
+        private Vector3 SnapToNearestFreePoint(
+            Vector3 desired,
+            System.Func<Vector3, bool> extraConstraint,
+            float radiusStep = 0.2f,
+            int maxRadiusSteps = 8)
+        {
+            desired.y = 0f;
 
             if (_obstacleMap != null &&
-                _obstacleMap.GetLocalPointTraversibility(desired) == ObstacleMapV2.Traversability.Free)
+                _obstacleMap.GetLocalPointTraversibility(desired) == ObstacleMapV2.Traversability.Free &&
+                (extraConstraint == null || extraConstraint(desired)))
             {
                 return desired;
             }
@@ -2223,7 +2241,8 @@ namespace PacMan.Agent
                     float angle = i * Mathf.PI * 2f / 16f;
                     Vector3 candidate = desired + new Vector3(Mathf.Cos(angle) * r, 0f, Mathf.Sin(angle) * r);
                     if (_obstacleMap != null &&
-                        _obstacleMap.GetLocalPointTraversibility(candidate) == ObstacleMapV2.Traversability.Free)
+                        _obstacleMap.GetLocalPointTraversibility(candidate) == ObstacleMapV2.Traversability.Free &&
+                        (extraConstraint == null || extraConstraint(candidate)))
                     {
                         return candidate;
                     }
@@ -2295,6 +2314,20 @@ namespace PacMan.Agent
                 return localPosition.x >= _middleInfo.MidXLocal;
 
             return true;
+        }
+
+        private Vector3 ClampToOwnTerritoryEdge(Vector3 localPosition)
+        {
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            float ownSideNudge = Mathf.Max(0.05f, _obstacleMap != null ? _obstacleMap.trueScale.x : 0.2f);
+            Vector3 clamped = localPosition;
+
+            if (myTeam == Team.Blue && clamped.x > _middleInfo.MidXLocal)
+                clamped.x = _middleInfo.MidXLocal - ownSideNudge;
+            else if (myTeam == Team.Red && clamped.x < _middleInfo.MidXLocal)
+                clamped.x = _middleInfo.MidXLocal + ownSideNudge;
+
+            return clamped;
         }
 
         private bool IsDeepEnoughInOwnTerritory(Vector3 localPosition, float extraDistance)
@@ -2595,13 +2628,23 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            if (TryGetCloseIntruderPursuitAcceleration(decision.TargetPosition, out var pursuitAcceleration))
+            Vector3 interceptTarget = ClampToOwnTerritoryEdge(decision.TargetPosition);
+            interceptTarget = SnapToNearestFreePoint(interceptTarget, IsInOwnTerritory, radiusStep: 0.2f, maxRadiusSteps: 24);
+            if (_obstacleMap == null ||
+                _obstacleMap.GetLocalPointTraversibility(interceptTarget) != ObstacleMapV2.Traversability.Free ||
+                !IsInOwnTerritory(interceptTarget))
+            {
+                Vector3 fallbackTarget = _hasDefenseAnchor ? _defenseAnchor : transform.localPosition;
+                interceptTarget = SnapToNearestFreePoint(fallbackTarget, IsInOwnTerritory, radiusStep: 0.2f, maxRadiusSteps: 24);
+            }
+
+            if (TryGetCloseIntruderPursuitAcceleration(interceptTarget, out var pursuitAcceleration))
             {
                 ClearCurrentPath();
                 return pursuitAcceleration;
             }
             
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f, ownTerritoryOnly: true);
+            return MoveToTarget(interceptTarget, arriveDistance: 0.25f, ownTerritoryOnly: true);
         }
         private Vector2 ExecuteBlockCrossing(BTDecision decision)
         {
@@ -2666,7 +2709,10 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.20f, periodicPillRepath: true);
+            return MoveToTarget(
+                decision.TargetPosition,
+                arriveDistance: 0.20f,
+                periodicPillRepath: true);
         }
         private Vector2 ExecuteAttackerCollectSafeMiddlePills(BTDecision decision)
         {
@@ -2676,7 +2722,10 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f, periodicPillRepath: true);
+            return MoveToTarget(
+                decision.TargetPosition,
+                arriveDistance: 0.25f,
+                periodicPillRepath: true);
         }
         private Vector2 ExecuteMoveToAttackPosition(BTDecision decision)
         {

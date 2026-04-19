@@ -131,7 +131,7 @@ MonoBehaviour:
   returnHomeReleaseOwnSideDistance: 1.2
   attackerGhostDangerStartFoodThreshold: 5
   attackerForcedReturnFoodThreshold: 9
-  friendlyCapsuleObstacleInflation: 1
+  friendlyCapsuleObstacleInflation: 0.4
   capsuleGoalIgnoreRadius: 0.6
   baseGhostDangerDistance: 2.5
   maxGhostDangerDistance: 6
