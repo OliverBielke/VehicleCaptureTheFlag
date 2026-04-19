@@ -131,11 +131,11 @@ MonoBehaviour:
   consumedCapsuleContactDistance: 0.25
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
+  attackerGhostDangerStartFoodThreshold: 5
+  attackerForcedReturnFoodThreshold: 9
   lateGameReturnHomeBaseSeconds: 20
   lateGameReturnHomeBufferSeconds: 6
   lateGameReturnHomeHorizontalSpeed: 2.34
-  attackerGhostDangerStartFoodThreshold: 5
-  attackerForcedReturnFoodThreshold: 9
   friendlyCapsuleObstacleInflation: 1
   capsuleGoalIgnoreRadius: 0.6
   baseGhostDangerDistance: 0
