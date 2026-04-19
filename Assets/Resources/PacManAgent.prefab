@@ -134,10 +134,12 @@ MonoBehaviour:
   lateGameReturnHomeBaseSeconds: 20
   lateGameReturnHomeBufferSeconds: 6
   lateGameReturnHomeHorizontalSpeed: 2.34
+  attackerGhostDangerStartFoodThreshold: 5
+  attackerForcedReturnFoodThreshold: 9
   friendlyCapsuleObstacleInflation: 1
   capsuleGoalIgnoreRadius: 0.6
-  baseGhostDangerDistance: 5
-  maxGhostDangerDistance: 6
+  baseGhostDangerDistance: 0
+  maxGhostDangerDistance: 4.5
   ghostDangerHysteresisDistance: 1
   defenderPurePursuitSwitchDistance: 2
   defenderMirrorEnemySideDepth: 2
@@ -146,12 +148,21 @@ MonoBehaviour:
   defenderSafeMiddleDepth: 2
   defenderSafeMiddleLanePadding: 0.4
   defenderSafeMiddleEnemyClearance: 4
+  defenderLaneFoodPileHoldThreshold: 15
+  defenderLaneFoodPileRadius: 7
+  defenderLaneFoodPileChainRadius: 2
+  defenderLaneFoodPileIntruderRadius: 3
+  drawDefenderLaneFoodPileRadius: 0
   minStepsBetweenRepaths: 12
   retargetDistanceThreshold: 0.75
   targetLockDistance: 0.35
   pillRepathIntervalSteps: 35
   pillUnsafeCellRetryThreshold: 6
   pillCandidateAttempts: 1
+  failedPathRetryCooldownSteps: 8
+  pillUnsafeRetargetCooldownSteps: 18
+  pillDangerSwitchThreshold: 0.15
+  pillDistanceSwitchThreshold: 1
   capsuleRepathIntervalSteps: 35
   teammateYieldDetectDistance: 0.75
   teammateYieldBackoffSteps: 8

@@ -64,17 +64,19 @@ namespace PacMan.Agent
         [SerializeField] private float nextCapsuleGrabLeadTime = 0.15f;
         [SerializeField] private float consumedCapsuleContactDistance = 0.25f;
         [Header("Retreat")]
-        [SerializeField] private float returnHomeOwnSideOffset = 0.8f;
+        [SerializeField] private float returnHomeOwnSideOffset = 1.2f;
         [SerializeField] private float returnHomeReleaseOwnSideDistance = 1.2f;
+        [SerializeField] private int attackerGhostDangerStartFoodThreshold = 5;
+        [SerializeField] private int attackerForcedReturnFoodThreshold = 9;
         [SerializeField] private float lateGameReturnHomeBaseSeconds = 20f;
         [SerializeField] private float lateGameReturnHomeBufferSeconds = 6f;
         [SerializeField] private float lateGameReturnHomeHorizontalSpeed = 2.34f;
         [SerializeField] private float friendlyCapsuleObstacleInflation = 1.0f;
         [SerializeField] private float capsuleGoalIgnoreRadius = 0.6f;
-        [SerializeField] private float baseGhostDangerDistance = 2.5f;
-        [SerializeField] private float maxGhostDangerDistance = 6.0f;
+        [SerializeField] private float baseGhostDangerDistance = 0f;
+        [SerializeField] private float maxGhostDangerDistance = 4.5f;
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
-        [SerializeField] private float defenderPurePursuitSwitchDistance = 1.5f;
+        [SerializeField] private float defenderPurePursuitSwitchDistance = 2f;
         [Header("Voronoi Safety")]
         private float _voronoiSafetyThreshold = 0.5f;
         private int _voronoiUpdateIntervalSteps = 3;
@@ -85,15 +87,25 @@ namespace PacMan.Agent
         [Header("Defense Middle Pills")]
         [SerializeField] private float defenderSafeMiddleDepth = 2.0f;
         [SerializeField] private float defenderSafeMiddleLanePadding = 0.4f;
-        [SerializeField] private float defenderSafeMiddleEnemyClearance = 2.5f;
+        [SerializeField] private float defenderSafeMiddleEnemyClearance = 4f;
+        [Header("Defense Lane Guard")]
+        [SerializeField] private int defenderLaneFoodPileHoldThreshold = 15;
+        [SerializeField] private float defenderLaneFoodPileRadius = 7f;
+        [SerializeField] private float defenderLaneFoodPileChainRadius = 1.5f;
+        [SerializeField] private float defenderLaneFoodPileIntruderRadius = 8f;
+        [SerializeField] private bool drawDefenderLaneFoodPileRadius = true;
         [Header("Path Stability")]
         [SerializeField] private int minStepsBetweenRepaths = 12;
         [SerializeField] private float retargetDistanceThreshold = 0.75f;
         [SerializeField] private float targetLockDistance = 0.35f;
-        [SerializeField] private int pillRepathIntervalSteps = 20;
+        [SerializeField] private int pillRepathIntervalSteps = 35;
         [SerializeField] private int pillUnsafeCellRetryThreshold = 6;
-        [SerializeField] private int pillCandidateAttempts = 2;
-        [SerializeField] private int capsuleRepathIntervalSteps = 12;
+        [SerializeField] private int pillCandidateAttempts = 1;
+        [SerializeField] private int failedPathRetryCooldownSteps = 8;
+        [SerializeField] private int pillUnsafeRetargetCooldownSteps = 18;
+        [SerializeField] private float pillDangerSwitchThreshold = 0.15f;
+        [SerializeField] private float pillDistanceSwitchThreshold = 1.0f;
+        [SerializeField] private int capsuleRepathIntervalSteps = 35;
         [Header("Teammate Yield")]
         [SerializeField] private float teammateYieldDetectDistance = 0.75f;
         [SerializeField] private int teammateYieldBackoffSteps = 8;
@@ -110,10 +122,17 @@ namespace PacMan.Agent
         private VoronoiPartitioning _voronoiPartitioning;
         private Dictionary<Vector2Int, VoronoiCellData> _currentVoronoi;
         private static readonly Dictionary<Team, List<Vector3>> ConsumedEnemyCapsulesByTeam = new();
+        private static readonly Dictionary<int, FoodSpawnInfo> FoodSpawnInfoById = new();
+
+        private struct FoodSpawnInfo
+        {
+            public Vector3 SpawnLocalPosition;
+        }
 
         // To track respawns
         private int _previousRespawnStep = -1;
         private int _lastPathPlanStep = -99999;
+        private int _lastFailedPathPlanStep = -99999;
         private int _lastKnownRespawnStep = -1;
         private bool _attackerThreatRetreatActive = false;
         private int _previousCarriedFoodCount = 0;
@@ -121,6 +140,7 @@ namespace PacMan.Agent
         private int _lastPlannedUnsafeCellCount = 0;
         private int _lastVoronoiUpdateStep = -99999;
         private Vector3 _lastPlannedGoalPosition = Vector3.zero;
+        private int _foodTargetUnsafeRetargetBlockedUntilStep = -99999;
         private bool _hasLatchedHomeTarget = false;
         private Vector3 _latchedHomeTarget = Vector3.zero;
         private int _teammateYieldBackoffUntilStep = -1;
@@ -181,6 +201,7 @@ namespace PacMan.Agent
             //Make all the classes have the same obstacle map
             if (EnemyTrackerManager.Instance != null) EnemyTrackerManager.Instance.SetObstacleMap(_obstacleMap);
             if (RoleAssigner.Instance != null) RoleAssigner.Instance.SetObstacleMap(_obstacleMap);
+            CacheFoodSpawnInfo();
             
             
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
@@ -466,7 +487,7 @@ namespace PacMan.Agent
             if (timeRemaining <= 0f)
                 return false;
 
-            Vector3 homeTarget = GetClosestHomePoint();
+            Vector3 homeTarget = GetSafestHomePoint();
             float estimatedTravelDistance = Vector3.Distance(myPos, homeTarget);
             float estimatedTimeToHome = estimatedTravelDistance / Mathf.Max(0.01f, lateGameReturnHomeHorizontalSpeed);
             canReachHomeInTime = estimatedTimeToHome <= timeRemaining;
@@ -639,13 +660,13 @@ namespace PacMan.Agent
             if (!mustBootstrap && !(dueByInterval && onStaggerSlot))
                 return;
 
-            var visibleEnemies = _agent.GetVisibleEnemyAgents();
-            var enemyPositions = visibleEnemies != null
-                ? visibleEnemies.Select(e => e.transform.position).ToList()
-                : new List<Vector3>();
+            var enemyPositions = GetTrackedEnemies()
+                .Where(enemy => enemy != null && enemy.HasPosition)
+                .Select(enemy => enemy.Position)
+                .ToList();
 
             // Compute full Voronoi and keep visualization filtering in OnDrawGizmos.
-            _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions);
+            _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.localPosition, enemyPositions);
             _lastVoronoiUpdateStep = currentStep;
         }
 
@@ -683,28 +704,15 @@ namespace PacMan.Agent
             bool isScared = _agent.IsScared();
             float scaredRemaining = Mathf.Max(0f, _agent.GetScaredRemainingDuration());
             int carriedFood = _agent.GetCarriedFoodCount();
-            Vector3 homeTarget = GetClosestHomePoint();
+            Vector3 homeTarget = GetSafestHomePoint();
+            bool holdLaneDueToFoodPile = ShouldHoldDefenderLaneDueToFoodPile(
+                out int protectedLaneFoodCount,
+                out Vector3 protectedFoodCenter,
+                out List<Vector3> protectedFoodPositions);
 
             bb.homeTargetPosition = homeTarget;
 
-            if (isPowered)
-            {
-                bb.shouldReturnHome = carriedFood >= poweredReturnFoodThreshold;
-
-                var poweredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
-                GameObject poweredFoodTarget = GetSafestFoodTarget(activeFood, poweredAssignment?.FoodTarget);
-                if (!bb.shouldReturnHome && poweredFoodTarget != null)
-                {
-                    bb.shouldLootWhilePowered = true;
-                    bb.enemyPillTargetPosition = poweredFoodTarget.transform.localPosition;
-                    bb.debugReason = "Powered up loot mode";
-                }
-                else if (bb.shouldReturnHome)
-                {
-                    bb.debugReason = "Powered loot threshold reached";
-                }
-            }
-            else if (isScared)
+            if (isScared)
             {
                 if (carriedFood >= poweredReturnFoodThreshold || scaredRemaining < 2f)
                 {
@@ -716,7 +724,7 @@ namespace PacMan.Agent
                 else
                 {
                     var scaredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
-                    GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, scaredAssignment?.FoodTarget);
+                    GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, GetPreferredFoodTarget(activeFood, scaredAssignment?.FoodTarget));
                     string selectedFoodReason = selectedFoodTarget != null
                         ? "Scared counter-raid (safest pill)"
                         : (scaredAssignment?.Reason ?? "Scared counter-raid");
@@ -727,35 +735,71 @@ namespace PacMan.Agent
                         if (alternateFoodTarget != null)
                         {
                             selectedFoodTarget = alternateFoodTarget;
+                            RegisterUnsafeFoodRetarget();
                             selectedFoodReason = $"Assigned pill path too unsafe ({_lastPlannedUnsafeCellCount} unsafe cells), trying alternate";
                         }
                     }
 
                     if (selectedFoodTarget != null)
                     {
+                        SetCurrentFoodTarget(selectedFoodTarget);
                         bb.shouldLootWhilePowered = true;
                         bb.enemyPillTargetPosition = selectedFoodTarget.transform.localPosition;
                         bb.debugReason = selectedFoodReason;
                     }
                     else if (TryGetSafestFoodPosition(myPos, activeFood, out var fallbackScaredFoodTarget))
                     {
+                        SetCurrentFoodTarget(null);
                         bb.shouldLootWhilePowered = true;
                         bb.enemyPillTargetPosition = fallbackScaredFoodTarget;
                         bb.debugReason = "Scared counter-raid fallback";
                     }
                     else
                     {
+                        SetCurrentFoodTarget(null);
                         bb.shouldReturnHome = true;
                         bb.debugReason = "Scared with no enemy pill target";
                     }
                 }
             }
+            else if (isPowered && !holdLaneDueToFoodPile)
+            {
+                bb.shouldReturnHome = carriedFood >= poweredReturnFoodThreshold;
 
-            if (!bb.shouldLootWhilePowered && !bb.shouldReturnHome && defendAssignment != null)
+                var poweredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
+                GameObject poweredFoodTarget = GetSafestFoodTarget(activeFood, GetPreferredFoodTarget(activeFood, poweredAssignment?.FoodTarget));
+                if (!bb.shouldReturnHome && poweredFoodTarget != null)
+                {
+                    SetCurrentFoodTarget(poweredFoodTarget);
+                    bb.shouldLootWhilePowered = true;
+                    bb.enemyPillTargetPosition = poweredFoodTarget.transform.localPosition;
+                    bb.debugReason = "Powered up loot mode";
+                }
+                else if (bb.shouldReturnHome)
+                {
+                    SetCurrentFoodTarget(null);
+                    bb.debugReason = "Powered loot threshold reached";
+                }
+            }
+            else if (isPowered && holdLaneDueToFoodPile)
+            {
+                SetCurrentFoodTarget(null);
+            }
+
+            bool defendAssignmentAllowed =
+                defendAssignment != null &&
+                (!holdLaneDueToFoodPile ||
+                 IsIntruderNearProtectedFoodPile(defendAssignment.TargetPosition, protectedFoodCenter, protectedFoodPositions));
+
+            if (!bb.shouldLootWhilePowered && !bb.shouldReturnHome && defendAssignmentAllowed)
             {
                 bb.enemyPacmanIntruderSuspected = true;
                 bb.suspectedIntruderPosition = defendAssignment.TargetPosition;
                 bb.debugReason = defendAssignment.Reason;
+            }
+            else if (!bb.shouldLootWhilePowered && !bb.shouldReturnHome && holdLaneDueToFoodPile)
+            {
+                bb.debugReason = $"Guarding lane pill pile ({protectedLaneFoodCount} pills)";
             }
 
             bb.enemyLikelyCrossingMyLane = false;
@@ -778,6 +822,7 @@ namespace PacMan.Agent
                 !bb.shouldReturnHome &&
                 !bb.enemyPacmanIntruderSuspected &&
                 !bb.enemyLikelyCrossingMyLane &&
+                (!isPowered || !holdLaneDueToFoodPile) &&
                 TryGetSafeMiddlePillTarget(activeFood, out var safeMiddleTarget, out var safeMiddleReason))
             {
                 bb.safeMiddlePillsAvailable = true;
@@ -832,10 +877,19 @@ namespace PacMan.Agent
                 }
             }
 
-            float ghostDangerDistance = Mathf.Lerp(
-                baseGhostDangerDistance,
-                maxGhostDangerDistance,
-                Mathf.Clamp01(carriedFoodCount / 5f));
+            int dangerStartFood = Mathf.Max(0, attackerGhostDangerStartFoodThreshold);
+            const int dangerMaxFood = 8;
+            float dangerProgress =
+                carriedFoodCount <= dangerStartFood
+                    ? 0f
+                    : Mathf.Clamp01((carriedFoodCount - dangerStartFood) / (float)Mathf.Max(1, dangerMaxFood - dangerStartFood));
+
+            float ghostDangerDistance = carriedFoodCount < dangerStartFood
+                ? 0f
+                : Mathf.Lerp(
+                    baseGhostDangerDistance,
+                    maxGhostDangerDistance,
+                    dangerProgress);
 
             bool carryingFood = carriedFoodCount >= 1;
             bool lateGameBankUnreachable = carryingFood && !canReachHomeInTime;
@@ -883,6 +937,7 @@ namespace PacMan.Agent
             bool hasPoweredCapsuleAssignment = isPowered && capsuleCampAssignment?.CapsuleTarget != null;
 
             bool shouldCommitReturnHome =
+                (!shouldRushPowerCapsule && !isPowered && carriedFoodCount >= attackerForcedReturnFoodThreshold) ||
                 (!shouldRushPowerCapsule && carryingFood && !isPowered && ghostInsideEnterRange) ||
                 (isPowered && !hasPoweredCapsuleAssignment && carriedFoodCount >= poweredReturnFoodThreshold);
 
@@ -916,7 +971,7 @@ namespace PacMan.Agent
                 _hasLatchedHomeTarget = false;
 
             bb.homeTargetPosition = homeTarget;
-            GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, attackAssignment?.FoodTarget);
+            GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, GetPreferredFoodTarget(activeFood, attackAssignment?.FoodTarget));
             string selectedFoodReason = selectedFoodTarget != null
                 ? "Safest enemy pill selected"
                 : (attackAssignment?.Reason ?? "Safe enemy pill available");
@@ -927,12 +982,18 @@ namespace PacMan.Agent
                 if (alternateFoodTarget != null)
                 {
                     selectedFoodTarget = alternateFoodTarget;
+                    RegisterUnsafeFoodRetarget();
                     selectedFoodReason = $"Assigned pill path too unsafe ({_lastPlannedUnsafeCellCount} unsafe cells), trying alternate";
                 }
             }
 
+            SetCurrentFoodTarget(selectedFoodTarget);
+            if (bb.shouldReturnHome)
+                SetCurrentFoodTarget(null);
+
             if (shouldRushPowerCapsule)
             {
+                SetCurrentFoodTarget(null);
                 bb.shouldReturnHome = false;
                 bb.shouldGrabPowerCapsule = true;
                 bb.powerCapsuleTargetPosition =
@@ -1023,6 +1084,8 @@ namespace PacMan.Agent
                 bb.debugReason = capsuleCampAssignment?.Reason ?? "Camp next enemy power capsule";
             else if (bb.shouldReturnHome && isPowered)
                 bb.debugReason = "Powered loot threshold reached";
+            else if (bb.shouldReturnHome && !isPowered && carriedFoodCount >= attackerForcedReturnFoodThreshold)
+                bb.debugReason = "Forced return at high loot count";
             else if (bb.shouldLootWhilePowered)
                 bb.debugReason = "Powered up loot mode";
             else if (bb.shouldReturnHome)
@@ -1061,7 +1124,7 @@ namespace PacMan.Agent
                     tracked[observation.ServerIndex] = new TrackedEnemyInfo
                     {
                         ServerIndex = observation.ServerIndex,
-                        Position = hasEstimate ? estimatedPosition : observation.Position,
+                        Position = hasObservationPosition ? observation.Position : estimatedPosition,
                         IsGhost = observation.IsGhost,
                         IsVisible = observation.Visible,
                         HasFood = observation.HasFood,
@@ -1124,12 +1187,54 @@ namespace PacMan.Agent
             return anchor;
         }
 
-        private Vector3 GetClosestHomePoint()
+        private List<Vector3> GetAttackerDefendedHomePoints()
+        {
+            if (RoleAssigner.Instance == null || _middleInfo.Lanes == null || _middleInfo.Lanes.Count == 0)
+                return null;
+
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            bool isBlue = myTeam == Team.Blue;
+            var defenders = RoleAssigner.Instance
+                .GetRegisteredAgentsForTeam(myTeam)
+                .Where(agent =>
+                    agent != null &&
+                    agent != this &&
+                    agent.AssignedRole == StaticRole.Defend &&
+                    agent.HasDefenseAnchor)
+                .ToList();
+
+            if (defenders.Count == 0)
+                return null;
+
+            var points = new List<Vector3>();
+            var usedLaneIds = new HashSet<int>();
+
+            foreach (var defender in defenders)
+            {
+                var lane = MapMiddleAnalyzer.GetClosestLane(defender.DefenseAnchor, _middleInfo, majorOnly: false);
+                if (lane == null || !usedLaneIds.Add(lane.Id))
+                    continue;
+
+                points.Add(isBlue ? lane.LeftCenterLocal : lane.RightCenterLocal);
+            }
+
+            return points.Count > 0 ? points : null;
+        }
+
+        private Vector3 GetSafestHomePoint()
         {
             bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
-            List<Vector3> homePoints = isBlue
-                ? _middleInfo.MiddleLeftLocalPositions
-                : _middleInfo.MiddleRightLocalPositions;
+            List<Vector3> homePoints =
+                _assignedRole == StaticRole.Attack
+                    ? GetAttackerDefendedHomePoints()
+                    : null;
+
+            if (homePoints == null || homePoints.Count == 0)
+            {
+                homePoints = isBlue
+                    ? _middleInfo.MiddleLeftLocalPositions
+                    : _middleInfo.MiddleRightLocalPositions;
+            }
 
             if (homePoints == null || homePoints.Count == 0)
             {
@@ -1137,36 +1242,49 @@ namespace PacMan.Agent
             }
 
             Vector3 currentPos = transform.localPosition;
-            Vector3 closestHomePoint = homePoints[0];
-            float minDistance = float.MaxValue;
+            Vector3 bestRetreatPoint = transform.localPosition;
+            bool foundCandidate = false;
+            bool bestIsSafe = false;
+            float bestDanger = float.MaxValue;
+            float bestDistance = float.MaxValue;
 
             foreach (var point in homePoints)
             {
-                float dist = Vector3.Distance(currentPos, point);
-                if (dist < minDistance)
+                Vector3 retreatPoint = point + new Vector3(
+                    isBlue ? -returnHomeOwnSideOffset : returnHomeOwnSideOffset,
+                    0f,
+                    0f);
+
+                Vector3 snappedRetreatPoint = SnapToNearestFreePoint(retreatPoint);
+                bool isSafe = IsPointCellSafe(snappedRetreatPoint);
+                float danger = GetPointDanger(snappedRetreatPoint);
+                float distance = Vector3.Distance(currentPos, snappedRetreatPoint);
+
+                if (!foundCandidate ||
+                    (isSafe && !bestIsSafe) ||
+                    (isSafe == bestIsSafe && danger + 0.0001f < bestDanger) ||
+                    (isSafe == bestIsSafe && Mathf.Abs(danger - bestDanger) <= 0.0001f && distance < bestDistance))
                 {
-                    minDistance = dist;
-                    closestHomePoint = point;
+                    foundCandidate = true;
+                    bestRetreatPoint = snappedRetreatPoint;
+                    bestIsSafe = isSafe;
+                    bestDanger = danger;
+                    bestDistance = distance;
                 }
             }
 
-            Vector3 retreatPoint = closestHomePoint + new Vector3(
-                isBlue ? -returnHomeOwnSideOffset : returnHomeOwnSideOffset,
-                0f,
-                0f);
-
-            return SnapToNearestFreePoint(retreatPoint);
+            return foundCandidate ? bestRetreatPoint : transform.localPosition;
         }
 
         private Vector3 GetStableHomeTarget(bool shouldReturnHome)
         {
             if (!shouldReturnHome)
-                return GetClosestHomePoint();
+                return GetSafestHomePoint();
 
             if (_hasLatchedHomeTarget)
                 return _latchedHomeTarget;
 
-            _latchedHomeTarget = GetClosestHomePoint();
+            _latchedHomeTarget = GetSafestHomePoint();
             _hasLatchedHomeTarget = true;
             return _latchedHomeTarget;
         }
@@ -1364,8 +1482,42 @@ namespace PacMan.Agent
 
         private bool ShouldRetryFoodTarget(Vector3 targetPosition)
         {
+            if (_agent != null && _agent.GetStepsSinceMatchStart() < _foodTargetUnsafeRetargetBlockedUntilStep)
+                return false;
+
             return _lastPlannedUnsafeCellCount > pillUnsafeCellRetryThreshold &&
                    Vector3.Distance(_lastPlannedGoalPosition, targetPosition) <= targetLockDistance;
+        }
+
+        private GameObject GetPreferredFoodTarget(List<GameObject> activeFood, GameObject assignedTarget = null)
+        {
+            bool IsValid(GameObject target) =>
+                target != null &&
+                target.activeSelf &&
+                activeFood != null &&
+                activeFood.Contains(target);
+
+            if (IsValid(_currentFoodTarget))
+                return _currentFoodTarget;
+
+            if (IsValid(assignedTarget))
+                return assignedTarget;
+
+            return null;
+        }
+
+        private void SetCurrentFoodTarget(GameObject foodTarget)
+        {
+            _currentFoodTarget = foodTarget != null && foodTarget.activeSelf ? foodTarget : null;
+        }
+
+        private void RegisterUnsafeFoodRetarget()
+        {
+            if (_agent == null)
+                return;
+
+            _foodTargetUnsafeRetargetBlockedUntilStep =
+                _agent.GetStepsSinceMatchStart() + Mathf.Max(1, pillUnsafeRetargetCooldownSteps);
         }
 
         private GameObject GetAlternativeFoodTarget(List<GameObject> activeFood, GameObject currentTarget)
@@ -1425,7 +1577,12 @@ namespace PacMan.Agent
             if (best == null)
                 return preferredTarget;
 
-            if (preferredTarget == null || preferredTarget == best)
+            bool preferredStillValid =
+                preferredTarget != null &&
+                preferredTarget.activeSelf &&
+                safeCandidates.Contains(preferredTarget);
+
+            if (!preferredStillValid || preferredTarget == best)
                 return best;
 
             bool bestIsSafe = IsFoodCellSafe(best.transform.localPosition);
@@ -1436,8 +1593,17 @@ namespace PacMan.Agent
 
             float bestDanger = GetFoodDanger(best.transform.localPosition);
             float preferredDanger = GetFoodDanger(preferredTarget.transform.localPosition);
-            if (bestDanger + 0.0001f < preferredDanger)
+            float dangerImprovement = preferredDanger - bestDanger;
+            if (dangerImprovement >= pillDangerSwitchThreshold)
                 return best;
+
+            float bestDistance = (best.transform.localPosition - origin).magnitude;
+            float preferredDistance = (preferredTarget.transform.localPosition - origin).magnitude;
+            if (Mathf.Abs(bestDanger - preferredDanger) <= pillDangerSwitchThreshold * 0.5f &&
+                (preferredDistance - bestDistance) >= pillDistanceSwitchThreshold)
+            {
+                return best;
+            }
 
             return preferredTarget;
         }
@@ -1449,7 +1615,7 @@ namespace PacMan.Agent
         /// <returns>True if the danger level is below the threshold, or if no Voronoi data is available.</returns>
         private bool IsFoodCellSafe(Vector3 foodPosition)
         {
-            if (TryGetFoodCellData(foodPosition, out var cellData))
+            if (TryGetPointCellData(foodPosition, out var cellData))
                 return cellData.Danger <= _voronoiSafetyThreshold;
 
             // When a Voronoi map exists, unknown cells are treated as unsafe to avoid risky target picks.
@@ -1466,7 +1632,26 @@ namespace PacMan.Agent
         /// <returns>Danger in range [0..1], where lower is safer; returns 0 when no Voronoi data exists.</returns>
         private float GetFoodDanger(Vector3 foodPosition)
         {
-            if (TryGetFoodCellData(foodPosition, out var cellData))
+            if (TryGetPointCellData(foodPosition, out var cellData))
+                return Mathf.Clamp01(cellData.Danger);
+
+            return 0f;
+        }
+
+        private bool IsPointCellSafe(Vector3 pointPosition)
+        {
+            if (TryGetPointCellData(pointPosition, out var cellData))
+                return cellData.Danger <= _voronoiSafetyThreshold;
+
+            if (_currentVoronoi != null && _currentVoronoi.Count > 0)
+                return false;
+
+            return true;
+        }
+
+        private float GetPointDanger(Vector3 pointPosition)
+        {
+            if (TryGetPointCellData(pointPosition, out var cellData))
                 return Mathf.Clamp01(cellData.Danger);
 
             return 0f;
@@ -1480,11 +1665,16 @@ namespace PacMan.Agent
         /// <returns>True if the cell exists in the current Voronoi map; otherwise false.</returns>
         private bool TryGetFoodCellData(Vector3 foodPosition, out VoronoiCellData cellData)
         {
+            return TryGetPointCellData(foodPosition, out cellData);
+        }
+
+        private bool TryGetPointCellData(Vector3 pointPosition, out VoronoiCellData cellData)
+        {
             cellData = default;
             if (_currentVoronoi == null || _currentVoronoi.Count == 0 || _obstacleMap == null)
                 return false;
 
-            var cell = _obstacleMap.WorldToCell(foodPosition);
+            var cell = _obstacleMap.WorldToCell(pointPosition);
             var coarseKey = new Vector2Int(
                 FloorDiv(cell.x, VoronoiCellScaleFactor),
                 FloorDiv(cell.z, VoronoiCellScaleFactor));
@@ -1619,6 +1809,302 @@ namespace PacMan.Agent
             return true;
         }
 
+        private bool ShouldHoldDefenderLaneDueToFoodPile(
+            out int protectedFoodCount,
+            out Vector3 protectedFoodCenter,
+            out List<Vector3> protectedFoodPositions)
+        {
+            protectedFoodCount = 0;
+            protectedFoodCenter = _hasDefenseAnchor ? _defenseAnchor : transform.localPosition;
+            protectedFoodPositions = new List<Vector3>();
+
+            if (_assignedRole != StaticRole.Defend ||
+                !_hasDefenseAnchor ||
+                defenderLaneFoodPileHoldThreshold <= 0 ||
+                _middleInfo.Lanes == null ||
+                _middleInfo.Lanes.Count == 0 ||
+                _agent == null)
+            {
+                return false;
+            }
+
+            MapMiddleAnalyzer.Lane lane = MapMiddleAnalyzer.GetClosestLane(_defenseAnchor, _middleInfo, majorOnly: false);
+            if (lane == null)
+                return false;
+
+            GetLaneZBounds(lane, out float laneMinZ, out float laneMaxZ);
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            var teamDefenders = RoleAssigner.Instance != null
+                ? RoleAssigner.Instance.GetRegisteredAgentsForTeam(myTeam)
+                    .Where(agent =>
+                        agent != null &&
+                        agent.AssignedRole == StaticRole.Defend &&
+                        agent.HasDefenseAnchor)
+                    .ToList()
+                : new List<PacManAIDebugBT>();
+            var foodObjects = _agent.GetFoodObjects();
+            if (foodObjects == null || foodObjects.Count == 0)
+                return false;
+
+            float pileRadiusSqr = Mathf.Max(0.1f, defenderLaneFoodPileRadius);
+            pileRadiusSqr *= pileRadiusSqr;
+            var candidateFoodPositions = new List<Vector3>();
+            var seedFoodIndices = new List<int>();
+
+            foreach (var food in foodObjects)
+            {
+                if (food == null || !food.activeSelf)
+                    continue;
+
+                Vector3 foodPos = food.transform.localPosition;
+                if (!TryGetFoodSpawnInfo(food, out var spawnInfo))
+                    continue;
+
+                if (!IsFoodDisplacedFromSpawn(foodPos, spawnInfo.SpawnLocalPosition))
+                    continue;
+
+                if (!IsInOwnTerritory(foodPos))
+                    continue;
+
+                if (foodPos.z < laneMinZ || foodPos.z > laneMaxZ)
+                    continue;
+
+                if (!IsClosestDefenderAnchorToPoint(foodPos, teamDefenders))
+                    continue;
+
+                int candidateIndex = candidateFoodPositions.Count;
+                candidateFoodPositions.Add(foodPos);
+
+                if ((foodPos - _defenseAnchor).sqrMagnitude > pileRadiusSqr)
+                    continue;
+
+                seedFoodIndices.Add(candidateIndex);
+            }
+
+            protectedFoodPositions = GetConnectedFoodPile(candidateFoodPositions, seedFoodIndices);
+            protectedFoodCount = protectedFoodPositions.Count;
+
+            if (protectedFoodCount > 0)
+                protectedFoodCenter = GetAveragePosition(protectedFoodPositions);
+
+            return protectedFoodCount >= defenderLaneFoodPileHoldThreshold;
+        }
+
+        private List<Vector3> GetConnectedFoodPile(List<Vector3> candidateFoodPositions, List<int> seedFoodIndices)
+        {
+            var connectedFood = new List<Vector3>();
+            if (candidateFoodPositions == null ||
+                candidateFoodPositions.Count == 0 ||
+                seedFoodIndices == null ||
+                seedFoodIndices.Count == 0)
+            {
+                return connectedFood;
+            }
+
+            float chainRadius = Mathf.Max(0.1f, defenderLaneFoodPileChainRadius);
+            float chainRadiusSqr = chainRadius * chainRadius;
+            var visited = new bool[candidateFoodPositions.Count];
+            var queue = new Queue<int>();
+
+            foreach (int seedIndex in seedFoodIndices)
+            {
+                if (seedIndex < 0 || seedIndex >= candidateFoodPositions.Count || visited[seedIndex])
+                    continue;
+
+                visited[seedIndex] = true;
+                queue.Enqueue(seedIndex);
+            }
+
+            while (queue.Count > 0)
+            {
+                int currentIndex = queue.Dequeue();
+                Vector3 currentPosition = candidateFoodPositions[currentIndex];
+                connectedFood.Add(currentPosition);
+
+                for (int i = 0; i < candidateFoodPositions.Count; i++)
+                {
+                    if (visited[i])
+                        continue;
+
+                    if ((candidateFoodPositions[i] - currentPosition).sqrMagnitude > chainRadiusSqr)
+                        continue;
+
+                    visited[i] = true;
+                    queue.Enqueue(i);
+                }
+            }
+
+            return connectedFood;
+        }
+
+        private static Vector3 GetAveragePosition(List<Vector3> positions)
+        {
+            if (positions == null || positions.Count == 0)
+                return Vector3.zero;
+
+            Vector3 sum = Vector3.zero;
+            foreach (var position in positions)
+            {
+                sum += position;
+            }
+
+            return sum / positions.Count;
+        }
+
+        private void CacheFoodSpawnInfo()
+        {
+            if (_agent == null)
+                return;
+
+            var foodObjects = _agent.GetFoodObjects();
+            if (foodObjects == null)
+                return;
+
+            foreach (var food in foodObjects)
+            {
+                if (food == null)
+                    continue;
+
+                TryGetFoodSpawnInfo(food, out _);
+            }
+        }
+
+        private bool TryGetFoodSpawnInfo(GameObject food, out FoodSpawnInfo spawnInfo)
+        {
+            spawnInfo = default;
+            if (food == null)
+                return false;
+
+            int id = food.GetInstanceID();
+            if (TryBuildFoodSpawnInfoFromMap(food, out spawnInfo))
+            {
+                FoodSpawnInfoById[id] = spawnInfo;
+                return true;
+            }
+
+            if (FoodSpawnInfoById.TryGetValue(id, out spawnInfo))
+                return true;
+
+            spawnInfo = new FoodSpawnInfo
+            {
+                SpawnLocalPosition = food.transform.localPosition
+            };
+            FoodSpawnInfoById[id] = spawnInfo;
+            return true;
+        }
+
+        private bool TryBuildFoodSpawnInfoFromMap(GameObject food, out FoodSpawnInfo spawnInfo)
+        {
+            spawnInfo = default;
+
+            if (food == null ||
+                _agent?.PacManGameManager == null ||
+                _agent.PacManGameManager.foodList == null ||
+                _mapManager == null ||
+                _mapManager.targetPositions == null)
+            {
+                return false;
+            }
+
+            int foodIndex = _agent.PacManGameManager.foodList.IndexOf(food);
+            if (foodIndex < 0 || foodIndex >= _mapManager.targetPositions.Count())
+                return false;
+
+            Vector3 targetLocalPosition = _mapManager.targetPositions.ElementAt(foodIndex);
+            Transform targetsTransform = _mapManager.transform.Find("Targets");
+            Vector3 spawnWorldPosition = targetsTransform != null
+                ? targetsTransform.position + targetLocalPosition
+                : targetLocalPosition;
+
+            Transform foodParent = food.transform.parent;
+            Vector3 spawnLocalPosition = foodParent != null
+                ? foodParent.InverseTransformPoint(spawnWorldPosition)
+                : spawnWorldPosition;
+            spawnLocalPosition.y = food.transform.localPosition.y;
+
+            spawnInfo = new FoodSpawnInfo
+            {
+                SpawnLocalPosition = spawnLocalPosition
+            };
+
+            return true;
+        }
+
+        private static bool IsFoodDisplacedFromSpawn(Vector3 currentPosition, Vector3 spawnPosition)
+        {
+            const float displacedDistance = 0.2f;
+            return (currentPosition - spawnPosition).sqrMagnitude > displacedDistance * displacedDistance;
+        }
+
+        private bool IsClosestDefenderAnchorToPoint(Vector3 point, List<PacManAIDebugBT> teamDefenders)
+        {
+            if (teamDefenders == null || teamDefenders.Count <= 1)
+                return true;
+
+            float myDistance = (_defenseAnchor - point).sqrMagnitude;
+            int myTieBreaker = _agent != null ? _agent.serverIndex : GetInstanceID();
+
+            foreach (var defender in teamDefenders)
+            {
+                if (defender == null || defender == this || !defender.HasDefenseAnchor)
+                    continue;
+
+                float otherDistance = (defender.DefenseAnchor - point).sqrMagnitude;
+                if (otherDistance + 0.0001f < myDistance)
+                    return false;
+
+                if (Mathf.Abs(otherDistance - myDistance) <= 0.0001f)
+                {
+                    int otherTieBreaker = defender.AgentManager != null
+                        ? defender.AgentManager.serverIndex
+                        : defender.GetInstanceID();
+
+                    if (otherTieBreaker < myTieBreaker)
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        private bool IsIntruderNearProtectedFoodPile(
+            Vector3 intruderPosition,
+            Vector3 protectedFoodCenter,
+            List<Vector3> protectedFoodPositions)
+        {
+            float radius = Mathf.Max(0.1f, defenderLaneFoodPileIntruderRadius);
+            float radiusSqr = radius * radius;
+
+            if (protectedFoodPositions != null && protectedFoodPositions.Count > 0)
+            {
+                foreach (var foodPosition in protectedFoodPositions)
+                {
+                    if ((intruderPosition - foodPosition).sqrMagnitude <= radiusSqr)
+                        return true;
+                }
+            }
+
+            return (intruderPosition - protectedFoodCenter).sqrMagnitude <= radiusSqr;
+        }
+
+        private static void GetLaneZBounds(MapMiddleAnalyzer.Lane lane, out float laneMinZ, out float laneMaxZ)
+        {
+            laneMinZ = lane.MidCenterLocal.z;
+            laneMaxZ = lane.MidCenterLocal.z;
+
+            if (lane.LeftLocalPositions != null && lane.LeftLocalPositions.Count > 0)
+            {
+                laneMinZ = Mathf.Min(laneMinZ, lane.LeftLocalPositions.Min(p => p.z));
+                laneMaxZ = Mathf.Max(laneMaxZ, lane.LeftLocalPositions.Max(p => p.z));
+            }
+
+            if (lane.RightLocalPositions != null && lane.RightLocalPositions.Count > 0)
+            {
+                laneMinZ = Mathf.Min(laneMinZ, lane.RightLocalPositions.Min(p => p.z));
+                laneMaxZ = Mathf.Max(laneMaxZ, lane.RightLocalPositions.Max(p => p.z));
+            }
+        }
+
         private bool TryGetSafeMiddlePillTarget(List<GameObject> activeFood, out Vector3 targetPosition, out string reason)
         {
             targetPosition = Vector3.zero;
@@ -1631,18 +2117,7 @@ namespace PacMan.Agent
             if (lane == null)
                 return false;
 
-            float laneMinZ = lane.MidCenterLocal.z;
-            float laneMaxZ = lane.MidCenterLocal.z;
-            if (lane.LeftLocalPositions != null && lane.LeftLocalPositions.Count > 0)
-            {
-                laneMinZ = Mathf.Min(laneMinZ, lane.LeftLocalPositions.Min(p => p.z));
-                laneMaxZ = Mathf.Max(laneMaxZ, lane.LeftLocalPositions.Max(p => p.z));
-            }
-            if (lane.RightLocalPositions != null && lane.RightLocalPositions.Count > 0)
-            {
-                laneMinZ = Mathf.Min(laneMinZ, lane.RightLocalPositions.Min(p => p.z));
-                laneMaxZ = Mathf.Max(laneMaxZ, lane.RightLocalPositions.Max(p => p.z));
-            }
+            GetLaneZBounds(lane, out float laneMinZ, out float laneMaxZ);
 
             float paddedLaneMinZ = laneMinZ - Mathf.Max(0f, defenderSafeMiddleLanePadding);
             float paddedLaneMaxZ = laneMaxZ + Mathf.Max(0f, defenderSafeMiddleLanePadding);
@@ -1719,7 +2194,10 @@ namespace PacMan.Agent
                     .FirstOrDefault();
 
                 if (alternateFood != null)
+                {
                     selectedTarget = alternateFood.transform.localPosition;
+                    RegisterUnsafeFoodRetarget();
+                }
             }
 
             targetPosition = selectedTarget;
@@ -1855,28 +2333,54 @@ namespace PacMan.Agent
 
             int currentStep = _agent.GetStepsSinceMatchStart();
             bool repathCooldownElapsed = (currentStep - _lastPathPlanStep) >= Mathf.Max(1, minStepsBetweenRepaths);
+            bool failedPathRetryCooldownElapsed = (currentStep - _lastFailedPathPlanStep) >= Mathf.Max(1, failedPathRetryCooldownSteps);
             int periodicInterval = periodicPillRepath ? pillRepathIntervalSteps : periodicRepathIntervalSteps;
             bool periodicRepathElapsed = periodicInterval > 0 &&
                                          (currentStep - _lastPathPlanStep) >= Mathf.Max(1, periodicInterval);
             float targetShiftDistance = Vector3.Distance(_goalPosition, target);
 
             bool needNewPath =
-                !_hasGoal ||
-                (targetShiftDistance > retargetDistanceThreshold && repathCooldownElapsed) ||
-                (_hasGoal && periodicRepathElapsed);
+                failedPathRetryCooldownElapsed &&
+                (
+                    !_hasGoal ||
+                    (targetShiftDistance > retargetDistanceThreshold && repathCooldownElapsed) ||
+                    (_hasGoal && periodicRepathElapsed)
+                );
 
             if (needNewPath)
             {
+                bool hadExistingPath = _droneControlling != null && _initialDroneState != null && _waypoints != null && _waypoints.Count > 1;
+                Vector3 previousGoal = _goalPosition;
+                bool previousHasGoal = _hasGoal;
+                List<Node> previousWaypoints = _waypoints;
+                DroneControlling previousController = _droneControlling;
+                Transform previousDroneState = _initialDroneState;
+
                 _goalPosition = target;
 
                 bool pathOk = MakePath(ownTerritoryOnly);
                 if (!pathOk)
                 {
-                    ClearCurrentPath();
-                    return Vector2.zero;
-                }
+                    _lastFailedPathPlanStep = currentStep;
 
-                _hasGoal = true;
+                    if (hadExistingPath)
+                    {
+                        _goalPosition = previousGoal;
+                        _hasGoal = previousHasGoal;
+                        _waypoints = previousWaypoints;
+                        _droneControlling = previousController;
+                        _initialDroneState = previousDroneState;
+                    }
+                    else
+                    {
+                        ClearCurrentPath();
+                        return Vector2.zero;
+                    }
+                }
+                else
+                {
+                    _hasGoal = true;
+                }
             }
 
             if (_droneControlling == null || _initialDroneState == null)
@@ -2097,7 +2601,7 @@ namespace PacMan.Agent
                 return pursuitAcceleration;
             }
             
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f, ownTerritoryOnly: true);
         }
         private Vector2 ExecuteBlockCrossing(BTDecision decision)
         {
@@ -2110,6 +2614,7 @@ namespace PacMan.Agent
             return MoveToTarget(
                 decision.TargetPosition,
                 arriveDistance: 0.35f,
+                ownTerritoryOnly: true,
                 periodicRepathIntervalSteps: Mathf.Max(1, defenderMirrorRepathIntervalSteps));
         }
         private Vector2 ExecuteDefenderCollectSafeMiddlePills(BTDecision decision)
@@ -2131,7 +2636,7 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f, ownTerritoryOnly: true);
         }
         private Vector2 ExecuteHoldDropZone(BTDecision decision)
         {
@@ -2141,7 +2646,7 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.30f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.30f, ownTerritoryOnly: true);
         }
         private Vector2 ExecuteReturnHome(BTDecision decision)
         {
@@ -2276,6 +2781,8 @@ namespace PacMan.Agent
             {
                 DrawMiddleGizmos();
             }
+
+            DrawDefenderLaneFoodPileRadiusGizmo();
             
             if (_voronoiPartitioning != null && _currentVoronoi != null)
             {
@@ -2328,6 +2835,49 @@ namespace PacMan.Agent
             GUI.color = Color.white;
             GUI.Label(new Rect(rect.x + 8f, rect.y + 5f, rect.width - 16f, rect.height - 10f), text, _agentHudStyle);
         }
+
+        private void DrawDefenderLaneFoodPileRadiusGizmo()
+        {
+            if (!drawDefenderLaneFoodPileRadius ||
+                _assignedRole != StaticRole.Defend ||
+                !_hasDefenseAnchor)
+            {
+                return;
+            }
+
+            float radius = Mathf.Max(0.1f, defenderLaneFoodPileRadius);
+            Vector3 center = transform.parent != null
+                ? transform.parent.TransformPoint(_defenseAnchor)
+                : _defenseAnchor;
+            center.y = transform.position.y + 0.08f;
+
+            Gizmos.color = new Color(1f, 0.55f, 0f, 0.9f);
+            DrawWireCircleXZ(center, radius, 72);
+            Gizmos.DrawSphere(center, 0.12f);
+
+        #if UNITY_EDITOR
+            UnityEditor.Handles.color = new Color(1f, 0.55f, 0f, 0.95f);
+            UnityEditor.Handles.Label(
+                center + Vector3.up * 0.35f,
+                $"Lane food seed: {radius:0.##}\nChain: {Mathf.Max(0.1f, defenderLaneFoodPileChainRadius):0.##}"
+            );
+        #endif
+        }
+
+        private static void DrawWireCircleXZ(Vector3 center, float radius, int segments)
+        {
+            segments = Mathf.Max(8, segments);
+            Vector3 previous = center + new Vector3(radius, 0f, 0f);
+
+            for (int i = 1; i <= segments; i++)
+            {
+                float angle = i * Mathf.PI * 2f / segments;
+                Vector3 next = center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                Gizmos.DrawLine(previous, next);
+                previous = next;
+            }
+        }
+
         private void DrawMiddleGizmos()
         {
             if (_middleInfo.MiddleLeftLocalPositions == null || _middleInfo.MiddleRightLocalPositions == null)
