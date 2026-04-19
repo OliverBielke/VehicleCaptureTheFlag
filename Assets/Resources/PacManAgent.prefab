@@ -124,12 +124,16 @@ MonoBehaviour:
   attackPatrolSwitchSteps: 30
   attackPatrolOffset: 1
   attackPatrolArriveDistance: 0.15
-  lateGameCapsuleRushSeconds: 45
+  powerPillBaseTimeSeconds: 25
+  powerPillExtraTimeSeconds: 20
   poweredReturnFoodThreshold: 6
   nextCapsuleGrabLeadTime: 0.15
   consumedCapsuleContactDistance: 0.25
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
+  lateGameReturnHomeBaseSeconds: 20
+  lateGameReturnHomeBufferSeconds: 6
+  lateGameReturnHomeHorizontalSpeed: 2.34
   friendlyCapsuleObstacleInflation: 1
   capsuleGoalIgnoreRadius: 0.6
   baseGhostDangerDistance: 5
