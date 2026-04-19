@@ -9,6 +9,7 @@ namespace PacMan.Agent.BehaviorTreeFolder
         public bool shouldCampNextPowerCapsule;
         public bool shouldLootWhilePowered;
         public bool shouldReturnHome;
+        public bool shouldReturnHomeLateGame;
         public bool safeEnemyPillsAvailable;
         public bool safeMiddlePillsAvailable;
         public bool outsideAttackZone;
@@ -33,6 +34,26 @@ namespace PacMan.Agent.BehaviorTreeFolder
                     "Attacker Selector",
                     new System.Collections.Generic.List<BTNode<AttackerBlackboard>>
                     {
+                        new SequenceNode<AttackerBlackboard>(
+                            "Late Game Return Home Sequence",
+                            new System.Collections.Generic.List<BTNode<AttackerBlackboard>>
+                            {
+                                new ConditionNode<AttackerBlackboard>(
+                                    "shouldReturnHomeLateGame",
+                                    bb => bb.shouldReturnHomeLateGame
+                                ),
+                                new ActionNode<AttackerBlackboard>(
+                                    "ReturnHome",
+                                    bb => BTDecision.Running(
+                                        AgentMode.ReturnHome,
+                                        "ReturnHome",
+                                        hasTarget: true,
+                                        targetPosition: bb.homeTargetPosition
+                                    )
+                                )
+                            }
+                        ),
+
                         new SequenceNode<AttackerBlackboard>(
                             "Grab Power Capsule Sequence",
                             new System.Collections.Generic.List<BTNode<AttackerBlackboard>>

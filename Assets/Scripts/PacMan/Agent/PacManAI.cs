@@ -65,6 +65,9 @@ namespace PacMan.Agent
         [Header("Retreat")]
         [SerializeField] private float returnHomeOwnSideOffset = 0.8f;
         [SerializeField] private float returnHomeReleaseOwnSideDistance = 1.2f;
+        [SerializeField] private float lateGameReturnHomeBaseSeconds = 20f;
+        [SerializeField] private float lateGameReturnHomeBufferSeconds = 6f;
+        [SerializeField] private float lateGameReturnHomeHorizontalSpeed = 2.34f;
         [SerializeField] private float friendlyCapsuleObstacleInflation = 1.0f;
         [SerializeField] private float capsuleGoalIgnoreRadius = 0.6f;
         [SerializeField] private float baseGhostDangerDistance = 2.5f;
@@ -441,6 +444,40 @@ namespace PacMan.Agent
         }
 
         /// <summary>
+        /// Checks whether an attacker should begin a late-game retreat based on carried food,
+        /// remaining time, and an estimated travel time to a home target.
+        /// </summary>
+        /// <param name="myPos">Current local position of the agent.</param>
+        /// <param name="carriedFoodCount">How much food the agent is currently carrying.</param>
+        /// <param name="timeRemaining">Seconds left in the match.</param>
+        /// <param name="canReachHomeInTime">True when the current estimate says home is still reachable before timeout.</param>
+        /// <returns>True when the agent should immediately head home; otherwise false.</returns>
+        private bool ShouldReturnHomeLateGame(Vector3 myPos, int carriedFoodCount, float timeRemaining, out bool canReachHomeInTime)
+        {
+            canReachHomeInTime = false;
+
+            if (carriedFoodCount <= 0)
+                return false;
+
+            if (IsInOwnTerritory(myPos))
+                return false;
+
+            if (timeRemaining <= 0f)
+                return false;
+
+            Vector3 homeTarget = GetClosestHomePoint();
+            float estimatedTravelDistance = Vector3.Distance(myPos, homeTarget);
+            float estimatedTimeToHome = estimatedTravelDistance / Mathf.Max(0.01f, lateGameReturnHomeHorizontalSpeed);
+            canReachHomeInTime = estimatedTimeToHome <= timeRemaining;
+            if (!canReachHomeInTime)
+                return false;
+
+            float deadline = Mathf.Max(lateGameReturnHomeBaseSeconds, estimatedTimeToHome + lateGameReturnHomeBufferSeconds);
+
+            return timeRemaining <= deadline;
+        }
+
+        /// <summary>
         /// Get closest visible enemy PacMan and Ghost distances. 
         /// </summary>
         /// <param name="visibleEnemyAgents">List of the visible enemies. </param>
@@ -756,6 +793,7 @@ namespace PacMan.Agent
             bool isPowered = _agent.IsPoweredUp();
             float powerRemaining = Mathf.Max(0f, _agent.GetPowerRemainingDuration());
             int carriedFoodCount = _agent.GetCarriedFoodCount();
+            bool shouldReturnHomeLateGame = ShouldReturnHomeLateGame(myPos, carriedFoodCount, timeRemaining, out bool canReachHomeInTime);
 
             float closestEnemyDist = float.MaxValue;
             TrackedEnemyInfo closestEnemy = null;
@@ -782,6 +820,7 @@ namespace PacMan.Agent
                 Mathf.Clamp01(carriedFoodCount / 5f));
 
             bool carryingFood = carriedFoodCount >= 1;
+            bool lateGameBankUnreachable = carryingFood && !canReachHomeInTime;
             bool ghostInsideEnterRange = closestEnemy != null && closestEnemyDist < ghostDangerDistance;
             bool ghostInsideExitRange = closestEnemy != null && closestEnemyDist < (ghostDangerDistance + ghostDangerHysteresisDistance);
             if (isPowered || !carryingFood)
@@ -832,7 +871,8 @@ namespace PacMan.Agent
             bool shouldReturnHomeNow =
                 _attackerRegroupAfterReturnHome ||
                 shouldCommitReturnHome ||
-                (!isPowered && ghostNearby);
+                (!isPowered && ghostNearby) ||
+                shouldReturnHomeLateGame;
             Vector3 homeTarget = GetStableHomeTarget(shouldReturnHomeNow);
             bool reachedHomeReturnTarget =
                 carriedFoodCount == 0 &&
@@ -851,7 +891,9 @@ namespace PacMan.Agent
 
             bb.shouldReturnHome =
                 _attackerRegroupAfterReturnHome ||
-                (!isPowered && ghostNearby);
+                (!isPowered && ghostNearby) ||
+                shouldReturnHomeLateGame;
+            bb.shouldReturnHomeLateGame = shouldReturnHomeLateGame;
             if (!bb.shouldReturnHome)
                 _hasLatchedHomeTarget = false;
 
@@ -953,6 +995,10 @@ namespace PacMan.Agent
 
             if (_attackerRegroupAfterReturnHome)
                 bb.debugReason = "Finish return-home path";
+            else if (bb.shouldReturnHomeLateGame)
+                bb.debugReason = $"Late game return home (time left {timeRemaining:F1}s)";
+            else if (lateGameBankUnreachable)
+                bb.debugReason = "Too late to bank food, keep pressuring";
             else if (bb.shouldGrabPowerCapsule)
                 bb.debugReason = capsuleRushAssignment?.Reason ?? "Late game power capsule rush";
             else if (bb.shouldCampNextPowerCapsule)
