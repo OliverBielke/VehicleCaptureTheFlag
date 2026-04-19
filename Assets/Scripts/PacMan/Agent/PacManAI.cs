@@ -65,6 +65,8 @@ namespace PacMan.Agent
         [Header("Retreat")]
         [SerializeField] private float returnHomeOwnSideOffset = 0.8f;
         [SerializeField] private float returnHomeReleaseOwnSideDistance = 1.2f;
+        [SerializeField] private int attackerGhostDangerStartFoodThreshold = 5;
+        [SerializeField] private int attackerForcedReturnFoodThreshold = 9;
         [SerializeField] private float friendlyCapsuleObstacleInflation = 1.0f;
         [SerializeField] private float capsuleGoalIgnoreRadius = 0.6f;
         [SerializeField] private float baseGhostDangerDistance = 2.5f;
@@ -89,6 +91,10 @@ namespace PacMan.Agent
         [SerializeField] private int pillRepathIntervalSteps = 20;
         [SerializeField] private int pillUnsafeCellRetryThreshold = 6;
         [SerializeField] private int pillCandidateAttempts = 2;
+        [SerializeField] private int failedPathRetryCooldownSteps = 8;
+        [SerializeField] private int pillUnsafeRetargetCooldownSteps = 18;
+        [SerializeField] private float pillDangerSwitchThreshold = 0.15f;
+        [SerializeField] private float pillDistanceSwitchThreshold = 1.0f;
         [SerializeField] private int capsuleRepathIntervalSteps = 12;
         [Header("Teammate Yield")]
         [SerializeField] private float teammateYieldDetectDistance = 0.75f;
@@ -110,6 +116,7 @@ namespace PacMan.Agent
         // To track respawns
         private int _previousRespawnStep = -1;
         private int _lastPathPlanStep = -99999;
+        private int _lastFailedPathPlanStep = -99999;
         private int _lastKnownRespawnStep = -1;
         private bool _attackerThreatRetreatActive = false;
         private int _previousCarriedFoodCount = 0;
@@ -117,6 +124,7 @@ namespace PacMan.Agent
         private int _lastPlannedUnsafeCellCount = 0;
         private int _lastVoronoiUpdateStep = -99999;
         private Vector3 _lastPlannedGoalPosition = Vector3.zero;
+        private int _foodTargetUnsafeRetargetBlockedUntilStep = -99999;
         private bool _hasLatchedHomeTarget = false;
         private Vector3 _latchedHomeTarget = Vector3.zero;
         private int _teammateYieldBackoffUntilStep = -1;
@@ -584,13 +592,13 @@ namespace PacMan.Agent
             if (!mustBootstrap && !(dueByInterval && onStaggerSlot))
                 return;
 
-            var visibleEnemies = _agent.GetVisibleEnemyAgents();
-            var enemyPositions = visibleEnemies != null
-                ? visibleEnemies.Select(e => e.transform.position).ToList()
-                : new List<Vector3>();
+            var enemyPositions = GetTrackedEnemies()
+                .Where(enemy => enemy != null && enemy.HasPosition)
+                .Select(enemy => enemy.Position)
+                .ToList();
 
             // Compute full Voronoi and keep visualization filtering in OnDrawGizmos.
-            _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.position, enemyPositions);
+            _currentVoronoi = _voronoiPartitioning.ComputeVoronoi(transform.localPosition, enemyPositions);
             _lastVoronoiUpdateStep = currentStep;
         }
 
@@ -628,7 +636,7 @@ namespace PacMan.Agent
             bool isScared = _agent.IsScared();
             float scaredRemaining = Mathf.Max(0f, _agent.GetScaredRemainingDuration());
             int carriedFood = _agent.GetCarriedFoodCount();
-            Vector3 homeTarget = GetClosestHomePoint();
+            Vector3 homeTarget = GetSafestHomePoint();
 
             bb.homeTargetPosition = homeTarget;
 
@@ -637,15 +645,17 @@ namespace PacMan.Agent
                 bb.shouldReturnHome = carriedFood >= poweredReturnFoodThreshold;
 
                 var poweredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
-                GameObject poweredFoodTarget = GetSafestFoodTarget(activeFood, poweredAssignment?.FoodTarget);
+                GameObject poweredFoodTarget = GetSafestFoodTarget(activeFood, GetPreferredFoodTarget(activeFood, poweredAssignment?.FoodTarget));
                 if (!bb.shouldReturnHome && poweredFoodTarget != null)
                 {
+                    SetCurrentFoodTarget(poweredFoodTarget);
                     bb.shouldLootWhilePowered = true;
                     bb.enemyPillTargetPosition = poweredFoodTarget.transform.localPosition;
                     bb.debugReason = "Powered up loot mode";
                 }
                 else if (bb.shouldReturnHome)
                 {
+                    SetCurrentFoodTarget(null);
                     bb.debugReason = "Powered loot threshold reached";
                 }
             }
@@ -661,7 +671,7 @@ namespace PacMan.Agent
                 else
                 {
                     var scaredAssignment = RoleAssigner.Instance?.AttackManager?.GetAssignment(this, activeFood, includePoweredDefenders: true);
-                    GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, scaredAssignment?.FoodTarget);
+                    GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, GetPreferredFoodTarget(activeFood, scaredAssignment?.FoodTarget));
                     string selectedFoodReason = selectedFoodTarget != null
                         ? "Scared counter-raid (safest pill)"
                         : (scaredAssignment?.Reason ?? "Scared counter-raid");
@@ -672,24 +682,28 @@ namespace PacMan.Agent
                         if (alternateFoodTarget != null)
                         {
                             selectedFoodTarget = alternateFoodTarget;
+                            RegisterUnsafeFoodRetarget();
                             selectedFoodReason = $"Assigned pill path too unsafe ({_lastPlannedUnsafeCellCount} unsafe cells), trying alternate";
                         }
                     }
 
                     if (selectedFoodTarget != null)
                     {
+                        SetCurrentFoodTarget(selectedFoodTarget);
                         bb.shouldLootWhilePowered = true;
                         bb.enemyPillTargetPosition = selectedFoodTarget.transform.localPosition;
                         bb.debugReason = selectedFoodReason;
                     }
                     else if (TryGetSafestFoodPosition(myPos, activeFood, out var fallbackScaredFoodTarget))
                     {
+                        SetCurrentFoodTarget(null);
                         bb.shouldLootWhilePowered = true;
                         bb.enemyPillTargetPosition = fallbackScaredFoodTarget;
                         bb.debugReason = "Scared counter-raid fallback";
                     }
                     else
                     {
+                        SetCurrentFoodTarget(null);
                         bb.shouldReturnHome = true;
                         bb.debugReason = "Scared with no enemy pill target";
                     }
@@ -776,10 +790,19 @@ namespace PacMan.Agent
                 }
             }
 
-            float ghostDangerDistance = Mathf.Lerp(
-                baseGhostDangerDistance,
-                maxGhostDangerDistance,
-                Mathf.Clamp01(carriedFoodCount / 5f));
+            int dangerStartFood = Mathf.Max(0, attackerGhostDangerStartFoodThreshold);
+            const int dangerMaxFood = 8;
+            float dangerProgress =
+                carriedFoodCount <= dangerStartFood
+                    ? 0f
+                    : Mathf.Clamp01((carriedFoodCount - dangerStartFood) / (float)Mathf.Max(1, dangerMaxFood - dangerStartFood));
+
+            float ghostDangerDistance = carriedFoodCount < dangerStartFood
+                ? 0f
+                : Mathf.Lerp(
+                    baseGhostDangerDistance,
+                    maxGhostDangerDistance,
+                    dangerProgress);
 
             bool carryingFood = carriedFoodCount >= 1;
             bool ghostInsideEnterRange = closestEnemy != null && closestEnemyDist < ghostDangerDistance;
@@ -826,6 +849,7 @@ namespace PacMan.Agent
             bool hasPoweredCapsuleAssignment = isPowered && capsuleCampAssignment?.CapsuleTarget != null;
 
             bool shouldCommitReturnHome =
+                (!shouldRushPowerCapsule && !isPowered && carriedFoodCount >= attackerForcedReturnFoodThreshold) ||
                 (!shouldRushPowerCapsule && carryingFood && !isPowered && ghostInsideEnterRange) ||
                 (isPowered && !hasPoweredCapsuleAssignment && carriedFoodCount >= poweredReturnFoodThreshold);
 
@@ -856,7 +880,7 @@ namespace PacMan.Agent
                 _hasLatchedHomeTarget = false;
 
             bb.homeTargetPosition = homeTarget;
-            GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, attackAssignment?.FoodTarget);
+            GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, GetPreferredFoodTarget(activeFood, attackAssignment?.FoodTarget));
             string selectedFoodReason = selectedFoodTarget != null
                 ? "Safest enemy pill selected"
                 : (attackAssignment?.Reason ?? "Safe enemy pill available");
@@ -867,12 +891,18 @@ namespace PacMan.Agent
                 if (alternateFoodTarget != null)
                 {
                     selectedFoodTarget = alternateFoodTarget;
+                    RegisterUnsafeFoodRetarget();
                     selectedFoodReason = $"Assigned pill path too unsafe ({_lastPlannedUnsafeCellCount} unsafe cells), trying alternate";
                 }
             }
 
+            SetCurrentFoodTarget(selectedFoodTarget);
+            if (bb.shouldReturnHome)
+                SetCurrentFoodTarget(null);
+
             if (shouldRushPowerCapsule)
             {
+                SetCurrentFoodTarget(null);
                 bb.shouldReturnHome = false;
                 bb.shouldGrabPowerCapsule = true;
                 bb.powerCapsuleTargetPosition =
@@ -959,6 +989,8 @@ namespace PacMan.Agent
                 bb.debugReason = capsuleCampAssignment?.Reason ?? "Camp next enemy power capsule";
             else if (bb.shouldReturnHome && isPowered)
                 bb.debugReason = "Powered loot threshold reached";
+            else if (bb.shouldReturnHome && !isPowered && carriedFoodCount >= attackerForcedReturnFoodThreshold)
+                bb.debugReason = "Forced return at high loot count";
             else if (bb.shouldLootWhilePowered)
                 bb.debugReason = "Powered up loot mode";
             else if (bb.shouldReturnHome)
@@ -1060,12 +1092,54 @@ namespace PacMan.Agent
             return anchor;
         }
 
-        private Vector3 GetClosestHomePoint()
+        private List<Vector3> GetAttackerDefendedHomePoints()
+        {
+            if (RoleAssigner.Instance == null || _middleInfo.Lanes == null || _middleInfo.Lanes.Count == 0)
+                return null;
+
+            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
+            bool isBlue = myTeam == Team.Blue;
+            var defenders = RoleAssigner.Instance
+                .GetRegisteredAgentsForTeam(myTeam)
+                .Where(agent =>
+                    agent != null &&
+                    agent != this &&
+                    agent.AssignedRole == StaticRole.Defend &&
+                    agent.HasDefenseAnchor)
+                .ToList();
+
+            if (defenders.Count == 0)
+                return null;
+
+            var points = new List<Vector3>();
+            var usedLaneIds = new HashSet<int>();
+
+            foreach (var defender in defenders)
+            {
+                var lane = MapMiddleAnalyzer.GetClosestLane(defender.DefenseAnchor, _middleInfo, majorOnly: false);
+                if (lane == null || !usedLaneIds.Add(lane.Id))
+                    continue;
+
+                points.Add(isBlue ? lane.LeftCenterLocal : lane.RightCenterLocal);
+            }
+
+            return points.Count > 0 ? points : null;
+        }
+
+        private Vector3 GetSafestHomePoint()
         {
             bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
-            List<Vector3> homePoints = isBlue
-                ? _middleInfo.MiddleLeftLocalPositions
-                : _middleInfo.MiddleRightLocalPositions;
+            List<Vector3> homePoints =
+                _assignedRole == StaticRole.Attack
+                    ? GetAttackerDefendedHomePoints()
+                    : null;
+
+            if (homePoints == null || homePoints.Count == 0)
+            {
+                homePoints = isBlue
+                    ? _middleInfo.MiddleLeftLocalPositions
+                    : _middleInfo.MiddleRightLocalPositions;
+            }
 
             if (homePoints == null || homePoints.Count == 0)
             {
@@ -1073,36 +1147,49 @@ namespace PacMan.Agent
             }
 
             Vector3 currentPos = transform.localPosition;
-            Vector3 closestHomePoint = homePoints[0];
-            float minDistance = float.MaxValue;
+            Vector3 bestRetreatPoint = transform.localPosition;
+            bool foundCandidate = false;
+            bool bestIsSafe = false;
+            float bestDanger = float.MaxValue;
+            float bestDistance = float.MaxValue;
 
             foreach (var point in homePoints)
             {
-                float dist = Vector3.Distance(currentPos, point);
-                if (dist < minDistance)
+                Vector3 retreatPoint = point + new Vector3(
+                    isBlue ? -returnHomeOwnSideOffset : returnHomeOwnSideOffset,
+                    0f,
+                    0f);
+
+                Vector3 snappedRetreatPoint = SnapToNearestFreePoint(retreatPoint);
+                bool isSafe = IsPointCellSafe(snappedRetreatPoint);
+                float danger = GetPointDanger(snappedRetreatPoint);
+                float distance = Vector3.Distance(currentPos, snappedRetreatPoint);
+
+                if (!foundCandidate ||
+                    (isSafe && !bestIsSafe) ||
+                    (isSafe == bestIsSafe && danger + 0.0001f < bestDanger) ||
+                    (isSafe == bestIsSafe && Mathf.Abs(danger - bestDanger) <= 0.0001f && distance < bestDistance))
                 {
-                    minDistance = dist;
-                    closestHomePoint = point;
+                    foundCandidate = true;
+                    bestRetreatPoint = snappedRetreatPoint;
+                    bestIsSafe = isSafe;
+                    bestDanger = danger;
+                    bestDistance = distance;
                 }
             }
 
-            Vector3 retreatPoint = closestHomePoint + new Vector3(
-                isBlue ? -returnHomeOwnSideOffset : returnHomeOwnSideOffset,
-                0f,
-                0f);
-
-            return SnapToNearestFreePoint(retreatPoint);
+            return foundCandidate ? bestRetreatPoint : transform.localPosition;
         }
 
         private Vector3 GetStableHomeTarget(bool shouldReturnHome)
         {
             if (!shouldReturnHome)
-                return GetClosestHomePoint();
+                return GetSafestHomePoint();
 
             if (_hasLatchedHomeTarget)
                 return _latchedHomeTarget;
 
-            _latchedHomeTarget = GetClosestHomePoint();
+            _latchedHomeTarget = GetSafestHomePoint();
             _hasLatchedHomeTarget = true;
             return _latchedHomeTarget;
         }
@@ -1300,8 +1387,42 @@ namespace PacMan.Agent
 
         private bool ShouldRetryFoodTarget(Vector3 targetPosition)
         {
+            if (_agent != null && _agent.GetStepsSinceMatchStart() < _foodTargetUnsafeRetargetBlockedUntilStep)
+                return false;
+
             return _lastPlannedUnsafeCellCount > pillUnsafeCellRetryThreshold &&
                    Vector3.Distance(_lastPlannedGoalPosition, targetPosition) <= targetLockDistance;
+        }
+
+        private GameObject GetPreferredFoodTarget(List<GameObject> activeFood, GameObject assignedTarget = null)
+        {
+            bool IsValid(GameObject target) =>
+                target != null &&
+                target.activeSelf &&
+                activeFood != null &&
+                activeFood.Contains(target);
+
+            if (IsValid(_currentFoodTarget))
+                return _currentFoodTarget;
+
+            if (IsValid(assignedTarget))
+                return assignedTarget;
+
+            return null;
+        }
+
+        private void SetCurrentFoodTarget(GameObject foodTarget)
+        {
+            _currentFoodTarget = foodTarget != null && foodTarget.activeSelf ? foodTarget : null;
+        }
+
+        private void RegisterUnsafeFoodRetarget()
+        {
+            if (_agent == null)
+                return;
+
+            _foodTargetUnsafeRetargetBlockedUntilStep =
+                _agent.GetStepsSinceMatchStart() + Mathf.Max(1, pillUnsafeRetargetCooldownSteps);
         }
 
         private GameObject GetAlternativeFoodTarget(List<GameObject> activeFood, GameObject currentTarget)
@@ -1361,7 +1482,12 @@ namespace PacMan.Agent
             if (best == null)
                 return preferredTarget;
 
-            if (preferredTarget == null || preferredTarget == best)
+            bool preferredStillValid =
+                preferredTarget != null &&
+                preferredTarget.activeSelf &&
+                safeCandidates.Contains(preferredTarget);
+
+            if (!preferredStillValid || preferredTarget == best)
                 return best;
 
             bool bestIsSafe = IsFoodCellSafe(best.transform.localPosition);
@@ -1372,8 +1498,17 @@ namespace PacMan.Agent
 
             float bestDanger = GetFoodDanger(best.transform.localPosition);
             float preferredDanger = GetFoodDanger(preferredTarget.transform.localPosition);
-            if (bestDanger + 0.0001f < preferredDanger)
+            float dangerImprovement = preferredDanger - bestDanger;
+            if (dangerImprovement >= pillDangerSwitchThreshold)
                 return best;
+
+            float bestDistance = (best.transform.localPosition - origin).magnitude;
+            float preferredDistance = (preferredTarget.transform.localPosition - origin).magnitude;
+            if (Mathf.Abs(bestDanger - preferredDanger) <= pillDangerSwitchThreshold * 0.5f &&
+                (preferredDistance - bestDistance) >= pillDistanceSwitchThreshold)
+            {
+                return best;
+            }
 
             return preferredTarget;
         }
@@ -1385,7 +1520,7 @@ namespace PacMan.Agent
         /// <returns>True if the danger level is below the threshold, or if no Voronoi data is available.</returns>
         private bool IsFoodCellSafe(Vector3 foodPosition)
         {
-            if (TryGetFoodCellData(foodPosition, out var cellData))
+            if (TryGetPointCellData(foodPosition, out var cellData))
                 return cellData.Danger <= _voronoiSafetyThreshold;
 
             // When a Voronoi map exists, unknown cells are treated as unsafe to avoid risky target picks.
@@ -1402,7 +1537,26 @@ namespace PacMan.Agent
         /// <returns>Danger in range [0..1], where lower is safer; returns 0 when no Voronoi data exists.</returns>
         private float GetFoodDanger(Vector3 foodPosition)
         {
-            if (TryGetFoodCellData(foodPosition, out var cellData))
+            if (TryGetPointCellData(foodPosition, out var cellData))
+                return Mathf.Clamp01(cellData.Danger);
+
+            return 0f;
+        }
+
+        private bool IsPointCellSafe(Vector3 pointPosition)
+        {
+            if (TryGetPointCellData(pointPosition, out var cellData))
+                return cellData.Danger <= _voronoiSafetyThreshold;
+
+            if (_currentVoronoi != null && _currentVoronoi.Count > 0)
+                return false;
+
+            return true;
+        }
+
+        private float GetPointDanger(Vector3 pointPosition)
+        {
+            if (TryGetPointCellData(pointPosition, out var cellData))
                 return Mathf.Clamp01(cellData.Danger);
 
             return 0f;
@@ -1416,11 +1570,16 @@ namespace PacMan.Agent
         /// <returns>True if the cell exists in the current Voronoi map; otherwise false.</returns>
         private bool TryGetFoodCellData(Vector3 foodPosition, out VoronoiCellData cellData)
         {
+            return TryGetPointCellData(foodPosition, out cellData);
+        }
+
+        private bool TryGetPointCellData(Vector3 pointPosition, out VoronoiCellData cellData)
+        {
             cellData = default;
             if (_currentVoronoi == null || _currentVoronoi.Count == 0 || _obstacleMap == null)
                 return false;
 
-            var cell = _obstacleMap.WorldToCell(foodPosition);
+            var cell = _obstacleMap.WorldToCell(pointPosition);
             var coarseKey = new Vector2Int(
                 FloorDiv(cell.x, VoronoiCellScaleFactor),
                 FloorDiv(cell.z, VoronoiCellScaleFactor));
@@ -1655,7 +1814,10 @@ namespace PacMan.Agent
                     .FirstOrDefault();
 
                 if (alternateFood != null)
+                {
                     selectedTarget = alternateFood.transform.localPosition;
+                    RegisterUnsafeFoodRetarget();
+                }
             }
 
             targetPosition = selectedTarget;
@@ -1791,28 +1953,54 @@ namespace PacMan.Agent
 
             int currentStep = _agent.GetStepsSinceMatchStart();
             bool repathCooldownElapsed = (currentStep - _lastPathPlanStep) >= Mathf.Max(1, minStepsBetweenRepaths);
+            bool failedPathRetryCooldownElapsed = (currentStep - _lastFailedPathPlanStep) >= Mathf.Max(1, failedPathRetryCooldownSteps);
             int periodicInterval = periodicPillRepath ? pillRepathIntervalSteps : periodicRepathIntervalSteps;
             bool periodicRepathElapsed = periodicInterval > 0 &&
                                          (currentStep - _lastPathPlanStep) >= Mathf.Max(1, periodicInterval);
             float targetShiftDistance = Vector3.Distance(_goalPosition, target);
 
             bool needNewPath =
-                !_hasGoal ||
-                (targetShiftDistance > retargetDistanceThreshold && repathCooldownElapsed) ||
-                (_hasGoal && periodicRepathElapsed);
+                failedPathRetryCooldownElapsed &&
+                (
+                    !_hasGoal ||
+                    (targetShiftDistance > retargetDistanceThreshold && repathCooldownElapsed) ||
+                    (_hasGoal && periodicRepathElapsed)
+                );
 
             if (needNewPath)
             {
+                bool hadExistingPath = _droneControlling != null && _initialDroneState != null && _waypoints != null && _waypoints.Count > 1;
+                Vector3 previousGoal = _goalPosition;
+                bool previousHasGoal = _hasGoal;
+                List<Node> previousWaypoints = _waypoints;
+                DroneControlling previousController = _droneControlling;
+                Transform previousDroneState = _initialDroneState;
+
                 _goalPosition = target;
 
                 bool pathOk = MakePath(ownTerritoryOnly);
                 if (!pathOk)
                 {
-                    ClearCurrentPath();
-                    return Vector2.zero;
-                }
+                    _lastFailedPathPlanStep = currentStep;
 
-                _hasGoal = true;
+                    if (hadExistingPath)
+                    {
+                        _goalPosition = previousGoal;
+                        _hasGoal = previousHasGoal;
+                        _waypoints = previousWaypoints;
+                        _droneControlling = previousController;
+                        _initialDroneState = previousDroneState;
+                    }
+                    else
+                    {
+                        ClearCurrentPath();
+                        return Vector2.zero;
+                    }
+                }
+                else
+                {
+                    _hasGoal = true;
+                }
             }
 
             if (_droneControlling == null || _initialDroneState == null)
@@ -2033,7 +2221,7 @@ namespace PacMan.Agent
                 return pursuitAcceleration;
             }
             
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.25f, ownTerritoryOnly: true);
         }
         private Vector2 ExecuteBlockCrossing(BTDecision decision)
         {
@@ -2046,6 +2234,7 @@ namespace PacMan.Agent
             return MoveToTarget(
                 decision.TargetPosition,
                 arriveDistance: 0.35f,
+                ownTerritoryOnly: true,
                 periodicRepathIntervalSteps: Mathf.Max(1, defenderMirrorRepathIntervalSteps));
         }
         private Vector2 ExecuteDefenderCollectSafeMiddlePills(BTDecision decision)
@@ -2067,7 +2256,7 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.35f, ownTerritoryOnly: true);
         }
         private Vector2 ExecuteHoldDropZone(BTDecision decision)
         {
@@ -2077,7 +2266,7 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.30f);
+            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.30f, ownTerritoryOnly: true);
         }
         private Vector2 ExecuteReturnHome(BTDecision decision)
         {

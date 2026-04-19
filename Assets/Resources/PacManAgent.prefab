@@ -130,10 +130,12 @@ MonoBehaviour:
   consumedCapsuleContactDistance: 0.25
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
+  attackerGhostDangerStartFoodThreshold: 5
+  attackerForcedReturnFoodThreshold: 9
   friendlyCapsuleObstacleInflation: 1
   capsuleGoalIgnoreRadius: 0.6
-  baseGhostDangerDistance: 5
-  maxGhostDangerDistance: 6
+  baseGhostDangerDistance: 0
+  maxGhostDangerDistance: 4.5
   ghostDangerHysteresisDistance: 1
   defenderPurePursuitSwitchDistance: 2
   defenderMirrorEnemySideDepth: 2
@@ -148,6 +150,10 @@ MonoBehaviour:
   pillRepathIntervalSteps: 35
   pillUnsafeCellRetryThreshold: 6
   pillCandidateAttempts: 1
+  failedPathRetryCooldownSteps: 8
+  pillUnsafeRetargetCooldownSteps: 18
+  pillDangerSwitchThreshold: 0.15
+  pillDistanceSwitchThreshold: 1
   capsuleRepathIntervalSteps: 35
   teammateYieldDetectDistance: 0.75
   teammateYieldBackoffSteps: 8
