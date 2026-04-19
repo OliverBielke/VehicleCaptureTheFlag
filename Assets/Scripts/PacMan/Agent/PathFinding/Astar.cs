@@ -14,6 +14,7 @@ namespace PacMan.Agent.PathFinding
         private readonly HashSet<Vector2Int> _dynamicBlockedCells;
         private readonly System.Func<Vector3, bool> _additionalTraversability;
         private readonly int _voronoiCellScale;
+        private readonly float _dangerPenaltyMultiplier;
         private Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
         
         /// <summary>
@@ -27,12 +28,14 @@ namespace PacMan.Agent.PathFinding
             ObstacleMapV2 obstacleMap,
             IEnumerable<Vector3> dynamicBlockedPositions = null,
             System.Func<Vector3, bool> additionalTraversability = null,
-            int voronoiCellScale = 1)
+            int voronoiCellScale = 1,
+            float dangerPenaltyMultiplier = 12f)
         {
             _obstacleMap = obstacleMap;
             _dynamicBlockedCells = new HashSet<Vector2Int>();
             _additionalTraversability = additionalTraversability;
             _voronoiCellScale = Mathf.Max(1, voronoiCellScale);
+            _dangerPenaltyMultiplier = Mathf.Max(1f, dangerPenaltyMultiplier);
 
             if (dynamicBlockedPositions == null || _obstacleMap == null)
                 return;
@@ -96,7 +99,8 @@ namespace PacMan.Agent.PathFinding
 
             // Pass the map instance so the node can check precomputed distances
             var startNode = new AStarNode(pos: startCell, goal: goalCell, obstacleMap: _obstacleMap, 
-                voronoiMap: _voronoiMap, voronoiCellScale: _voronoiCellScale, parent: null);
+                voronoiMap: _voronoiMap, voronoiCellScale: _voronoiCellScale,
+                dangerPenaltyMultiplier: _dangerPenaltyMultiplier, parent: null);
             openSet.Add(startNode);
             
             const int maxIterations = 50000;
@@ -140,7 +144,8 @@ namespace PacMan.Agent.PathFinding
                     if (neighborNode == null)
                     {
                         neighborNode = new AStarNode(pos: neighborPos, goal: goalCell, obstacleMap: _obstacleMap, 
-                            voronoiMap:_voronoiMap, voronoiCellScale: _voronoiCellScale, parent: currentNode);
+                            voronoiMap:_voronoiMap, voronoiCellScale: _voronoiCellScale,
+                            dangerPenaltyMultiplier: _dangerPenaltyMultiplier, parent: currentNode);
                         openSet.Add(neighborNode);
                         
                         // Draw cyan lines for newly explored paths. They will vanish after 2 seconds.
@@ -187,15 +192,18 @@ namespace PacMan.Agent.PathFinding
             private readonly ObstacleMapV2 _obstacleMap;
             private readonly Dictionary<Vector2Int, VoronoiCellData> _voronoiMap;
             private readonly int _voronoiCellScale;
+            private readonly float _dangerPenaltyMultiplier;
 
             public AStarNode(Vector2Int pos, Vector2Int goal, ObstacleMapV2 obstacleMap, 
-                Dictionary<Vector2Int, VoronoiCellData> voronoiMap, int voronoiCellScale, AStarNode parent=null)
+                Dictionary<Vector2Int, VoronoiCellData> voronoiMap, int voronoiCellScale,
+                float dangerPenaltyMultiplier, AStarNode parent=null)
             {
                 Position = pos;
                 Parent = parent;
                 _obstacleMap = obstacleMap;
                 _voronoiMap = voronoiMap;
                 _voronoiCellScale = Mathf.Max(1, voronoiCellScale);
+                _dangerPenaltyMultiplier = Mathf.Max(1f, dangerPenaltyMultiplier);
 
                 GCost = CostToCome(parent: parent);
                 _hCost = Heuristic(goal: goal);
@@ -223,7 +231,6 @@ namespace PacMan.Agent.PathFinding
                 Vector3 currentWorld = _obstacleMap.CellToWorld(new Vector3Int(Position.x, 0, Position.y));
 
                 var multiplier = 1f;
-                const float maxDangerPenaltyMultiplier = 12f;
                 if (_voronoiMap != null)
                 {
                     var voronoiKey = new Vector2Int(
@@ -234,7 +241,7 @@ namespace PacMan.Agent.PathFinding
                     {
                         // Smoothly scale cost so near-enemy cells are discouraged without hard blocking.
                         float danger = Mathf.Clamp01(cellData.Danger);
-                        multiplier = Mathf.Lerp(1f, maxDangerPenaltyMultiplier, danger);
+                        multiplier = Mathf.Lerp(1f, _dangerPenaltyMultiplier, danger);
                     }
                 }
                 

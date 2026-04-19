@@ -76,6 +76,9 @@ namespace PacMan.Agent
         [SerializeField] private float baseGhostDangerDistance = 0f;
         [SerializeField] private float maxGhostDangerDistance = 4.5f;
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
+        [SerializeField] private int returnHomeLaneDangerSampleCount = 8;
+        [SerializeField] private int returnHomeRepathIntervalSteps = 8;
+        [SerializeField] private float voronoiPathDangerPenaltyMultiplier = 30f;
         [SerializeField] private float defenderPurePursuitSwitchDistance = 2f;
         [Header("Voronoi Safety")]
         private float _voronoiSafetyThreshold = 0.5f;
@@ -92,7 +95,7 @@ namespace PacMan.Agent
         [SerializeField] private int defenderLaneFoodPileHoldThreshold = 15;
         [SerializeField] private float defenderLaneFoodPileRadius = 7f;
         [SerializeField] private float defenderLaneFoodPileChainRadius = 1.5f;
-        [SerializeField] private float defenderLaneFoodPileIntruderRadius = 8f;
+        [SerializeField] private float defenderLaneFoodPileIntruderRadius = 3f;
         [SerializeField] private bool drawDefenderLaneFoodPileRadius = true;
         [Header("Path Stability")]
         [SerializeField] private int minStepsBetweenRepaths = 12;
@@ -551,18 +554,10 @@ namespace PacMan.Agent
         {
             _initialDroneState = _agent.transform;
             var curPos = _initialDroneState.localPosition;
-            var capsuleObstaclePoints = GetInflatedCapsuleObstaclePoints().ToList();
-            int originalCapsuleObstacleCount = capsuleObstaclePoints.Count;
-            var dynamicPathObstacles = new List<Vector3>(capsuleObstaclePoints);
-            int teammateYieldObstacleCount = 0;
-
-            if (IsTeammateYieldObstacleActive() &&
-                Vector3.Distance(_teammateYieldObstaclePosition, _goalPosition) > teammateYieldGoalIgnoreRadius)
-            {
-                var yieldObstaclePoints = GetInflatedTeammateYieldObstaclePoints().ToList();
-                teammateYieldObstacleCount = yieldObstaclePoints.Count;
-                dynamicPathObstacles.AddRange(yieldObstaclePoints);
-            }
+            var dynamicPathObstacles = BuildDynamicPathObstacles(
+                _goalPosition,
+                out int originalCapsuleObstacleCount,
+                out int teammateYieldObstacleCount);
 
             var startTrav = _obstacleMap.GetLocalPointTraversibility(curPos);
             var goalTrav = _obstacleMap.GetLocalPointTraversibility(_goalPosition);
@@ -584,7 +579,8 @@ namespace PacMan.Agent
                 _obstacleMap,
                 dynamicPathObstacles,
                 enforceOwnTerritoryPath ? IsInOwnTerritory : null,
-                VoronoiCellScaleFactor);
+                VoronoiCellScaleFactor,
+                voronoiPathDangerPenaltyMultiplier);
             List<Vector3> aStarPath = aStar.PlanPathAStar(curPos, _goalPosition, _currentVoronoi);
 
             _lastPlannedGoalPosition = _goalPosition;
@@ -791,6 +787,7 @@ namespace PacMan.Agent
             else if (isPowered && holdLaneDueToFoodPile)
             {
                 SetCurrentFoodTarget(null);
+                bb.debugReason = $"Powered guarding lane pill pile ({protectedLaneFoodCount} pills)";
             }
 
             bool defendAssignmentAllowed =
@@ -806,7 +803,8 @@ namespace PacMan.Agent
             }
             else if (!bb.shouldLootWhilePowered && !bb.shouldReturnHome && holdLaneDueToFoodPile)
             {
-                bb.debugReason = $"Guarding lane pill pile ({protectedLaneFoodCount} pills)";
+                if (string.IsNullOrEmpty(bb.debugReason))
+                    bb.debugReason = $"Guarding lane pill pile ({protectedLaneFoodCount} pills)";
             }
 
             bb.enemyLikelyCrossingMyLane = false;
@@ -1251,9 +1249,12 @@ namespace PacMan.Agent
             Vector3 currentPos = transform.localPosition;
             Vector3 bestRetreatPoint = transform.localPosition;
             bool foundCandidate = false;
-            bool bestIsSafe = false;
-            float bestDanger = float.MaxValue;
+            float bestSafetyScore = float.MaxValue;
             float bestDistance = float.MaxValue;
+            var trackedEnemies = GetTrackedEnemies()
+                .Where(enemy => enemy != null && enemy.HasPosition)
+                .Select(enemy => enemy.Position)
+                .ToList();
 
             foreach (var point in homePoints)
             {
@@ -1263,24 +1264,55 @@ namespace PacMan.Agent
                     0f);
 
                 Vector3 snappedRetreatPoint = SnapToNearestFreePoint(retreatPoint);
-                bool isSafe = IsPointCellSafe(snappedRetreatPoint);
-                float danger = GetPointDanger(snappedRetreatPoint);
+                float safetyScore = GetReturnHomeLaneSafetyScore(currentPos, snappedRetreatPoint, trackedEnemies);
                 float distance = Vector3.Distance(currentPos, snappedRetreatPoint);
 
                 if (!foundCandidate ||
-                    (isSafe && !bestIsSafe) ||
-                    (isSafe == bestIsSafe && danger + 0.0001f < bestDanger) ||
-                    (isSafe == bestIsSafe && Mathf.Abs(danger - bestDanger) <= 0.0001f && distance < bestDistance))
+                    safetyScore + 0.0001f < bestSafetyScore ||
+                    (Mathf.Abs(safetyScore - bestSafetyScore) <= 0.0001f && distance < bestDistance))
                 {
                     foundCandidate = true;
                     bestRetreatPoint = snappedRetreatPoint;
-                    bestIsSafe = isSafe;
-                    bestDanger = danger;
+                    bestSafetyScore = safetyScore;
                     bestDistance = distance;
                 }
             }
 
             return foundCandidate ? bestRetreatPoint : transform.localPosition;
+        }
+
+        private float GetReturnHomeLaneSafetyScore(Vector3 fromPosition, Vector3 retreatPoint, List<Vector3> enemyPositions)
+        {
+            float score = 0f;
+            int samples = Mathf.Max(2, returnHomeLaneDangerSampleCount);
+            float minEnemyDistance = float.MaxValue;
+
+            for (int i = 0; i <= samples; i++)
+            {
+                float t = i / (float)samples;
+                Vector3 sample = Vector3.Lerp(fromPosition, retreatPoint, t);
+                float danger = GetPointDanger(sample);
+                score += danger * 12f;
+
+                if (!IsPointCellSafe(sample))
+                    score += 25f;
+
+                if (enemyPositions == null)
+                    continue;
+
+                foreach (var enemyPosition in enemyPositions)
+                {
+                    minEnemyDistance = Mathf.Min(minEnemyDistance, Vector3.Distance(sample, enemyPosition));
+                }
+            }
+
+            if (minEnemyDistance < float.MaxValue * 0.5f)
+            {
+                score += 12f / Mathf.Max(0.5f, minEnemyDistance);
+            }
+
+            score += Vector3.Distance(fromPosition, retreatPoint) * 0.03f;
+            return score;
         }
 
         private Vector3 GetStableHomeTarget(bool shouldReturnHome)
@@ -2316,6 +2348,27 @@ namespace PacMan.Agent
             return true;
         }
 
+        private List<Vector3> BuildDynamicPathObstacles(
+            Vector3 goalPosition,
+            out int capsuleObstacleCount,
+            out int teammateYieldObstacleCount)
+        {
+            var capsuleObstaclePoints = GetInflatedCapsuleObstaclePoints().ToList();
+            capsuleObstacleCount = capsuleObstaclePoints.Count;
+            teammateYieldObstacleCount = 0;
+            var dynamicPathObstacles = new List<Vector3>(capsuleObstaclePoints);
+
+            if (IsTeammateYieldObstacleActive() &&
+                Vector3.Distance(_teammateYieldObstaclePosition, goalPosition) > teammateYieldGoalIgnoreRadius)
+            {
+                var yieldObstaclePoints = GetInflatedTeammateYieldObstaclePoints().ToList();
+                teammateYieldObstacleCount = yieldObstaclePoints.Count;
+                dynamicPathObstacles.AddRange(yieldObstaclePoints);
+            }
+
+            return dynamicPathObstacles;
+        }
+
         private Vector3 ClampToOwnTerritoryEdge(Vector3 localPosition)
         {
             Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
@@ -2699,7 +2752,10 @@ namespace PacMan.Agent
                 return Vector2.zero;
             }
 
-            return MoveToTarget(decision.TargetPosition, arriveDistance: 0.30f);
+            return MoveToTarget(
+                decision.TargetPosition,
+                arriveDistance: 0.30f,
+                periodicRepathIntervalSteps: Mathf.Max(1, returnHomeRepathIntervalSteps));
         }
         private Vector2 ExecuteCollectEnemyPills(BTDecision decision)
         {

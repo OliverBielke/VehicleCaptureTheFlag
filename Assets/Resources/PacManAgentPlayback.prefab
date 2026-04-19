@@ -99,8 +99,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1690c612a1b53a54bb78dd8e73a17d93, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  max_speed: 20
-  max_acceleration: 13
+  max_speed: 15
+  max_acceleration: 15
   collisionEnabled: 1
 --- !u!114 &-3328113813598124169
 MonoBehaviour:
@@ -123,42 +123,49 @@ MonoBehaviour:
   attackPatrolSwitchSteps: 30
   attackPatrolOffset: 1
   attackPatrolArriveDistance: 0.15
-  lateGameCapsuleRushSeconds: 45
+  powerPillBaseTimeSeconds: 25
+  powerPillExtraTimeSeconds: 20
   poweredReturnFoodThreshold: 6
-  nextCapsuleGrabLeadTime: 0.15
+  nextCapsuleGrabLeadTime: 0.5
   consumedCapsuleContactDistance: 0.25
-  returnHomeOwnSideOffset: 0.8
+  returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
-  attackerGhostDangerStartFoodThreshold: 5
-  attackerForcedReturnFoodThreshold: 9
-  friendlyCapsuleObstacleInflation: 0.4
+  attackerGhostDangerStartFoodThreshold: 3
+  attackerForcedReturnFoodThreshold: 6
+  lateGameReturnHomeBaseSeconds: 20
+  lateGameReturnHomeBufferSeconds: 6
+  lateGameReturnHomeHorizontalSpeed: 2.34
+  friendlyCapsuleObstacleInflation: 0.7
   capsuleGoalIgnoreRadius: 0.6
-  baseGhostDangerDistance: 2.5
-  maxGhostDangerDistance: 6
+  baseGhostDangerDistance: 0
+  maxGhostDangerDistance: 5
   ghostDangerHysteresisDistance: 1
-  defenderPurePursuitSwitchDistance: 1.5
+  returnHomeLaneDangerSampleCount: 8
+  returnHomeRepathIntervalSteps: 8
+  voronoiPathDangerPenaltyMultiplier: 30
+  defenderPurePursuitSwitchDistance: 2
   defenderMirrorEnemySideDepth: 2
   defenderMirrorLanePadding: 0.5
   defenderMirrorRepathIntervalSteps: 1
   defenderSafeMiddleDepth: 2
   defenderSafeMiddleLanePadding: 0.4
-  defenderSafeMiddleEnemyClearance: 2.5
-  defenderLaneFoodPileHoldThreshold: 4
-  defenderLaneFoodPileRadius: 3
-  defenderLaneFoodPileChainRadius: 1.5
-  defenderLaneFoodPileIntruderRadius: 2.5
-  drawDefenderLaneFoodPileRadius: 1
+  defenderSafeMiddleEnemyClearance: 4
+  defenderLaneFoodPileHoldThreshold: 15
+  defenderLaneFoodPileRadius: 7
+  defenderLaneFoodPileChainRadius: 2
+  defenderLaneFoodPileIntruderRadius: 3
+  drawDefenderLaneFoodPileRadius: 0
   minStepsBetweenRepaths: 12
   retargetDistanceThreshold: 0.75
   targetLockDistance: 0.35
-  pillRepathIntervalSteps: 20
+  pillRepathIntervalSteps: 35
   pillUnsafeCellRetryThreshold: 6
-  pillCandidateAttempts: 2
+  pillCandidateAttempts: 1
   failedPathRetryCooldownSteps: 8
   pillUnsafeRetargetCooldownSteps: 18
   pillDangerSwitchThreshold: 0.15
   pillDistanceSwitchThreshold: 1
-  capsuleRepathIntervalSteps: 12
+  capsuleRepathIntervalSteps: 35
   teammateYieldDetectDistance: 0.75
   teammateYieldBackoffSteps: 8
   teammateYieldObstacleSteps: 20
