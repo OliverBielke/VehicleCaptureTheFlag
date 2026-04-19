@@ -57,9 +57,10 @@ namespace PacMan.Agent
         [SerializeField] private int attackPatrolSwitchSteps = 30;
         [SerializeField] private float attackPatrolOffset = 1.0f;
         [SerializeField] private float attackPatrolArriveDistance = 0.15f;
-        [Header("Power Play")]
-        [SerializeField] private float lateGameCapsuleRushSeconds = 45f;
-        [SerializeField] private int poweredReturnFoodThreshold = 6;
+         [Header("Power Play")]
+         [SerializeField] private float powerPillBaseTimeSeconds = 25f;
+         [SerializeField] private float powerPillExtraTimeSeconds = 20f;
+         [SerializeField] private int poweredReturnFoodThreshold = 6;
         [SerializeField] private float nextCapsuleGrabLeadTime = 0.15f;
         [SerializeField] private float consumedCapsuleContactDistance = 0.25f;
         [Header("Retreat")]
@@ -474,13 +475,30 @@ namespace PacMan.Agent
 
             float deadline = Mathf.Max(lateGameReturnHomeBaseSeconds, estimatedTimeToHome + lateGameReturnHomeBufferSeconds);
 
-            return timeRemaining <= deadline;
-        }
+             return timeRemaining <= deadline;
+         }
 
-        /// <summary>
-        /// Get closest visible enemy PacMan and Ghost distances. 
-        /// </summary>
-        /// <param name="visibleEnemyAgents">List of the visible enemies. </param>
+         /// <summary>
+         /// Calculates the time threshold for rushing power capsules in late game.
+         /// Formula: baseTime + (numExtraPowerPills * extraTime)
+         /// For example: 25 + (2 * 20) = 64 seconds for 2 available power pills
+         /// </summary>
+         /// <param name="activeEnemyCapsules">List of available enemy capsules to count.</param>
+         /// <returns>The calculated capsule rush time threshold in seconds.</returns>
+         private float GetCapsuleRushTimeThreshold(List<GameObject> activeEnemyCapsules)
+         {
+             int numCapsules = activeEnemyCapsules != null ? activeEnemyCapsules.Count : 0;
+             // Base time + (extra capsules beyond first) * extra time per capsule
+             // With 1 capsule: base only
+             // With 2+ capsules: base + (count-1) * extra
+             float extraCapsuleCount = Mathf.Max(0, numCapsules - 1);
+             return powerPillBaseTimeSeconds + (extraCapsuleCount * powerPillExtraTimeSeconds);
+         }
+
+         /// <summary>
+         /// Get closest visible enemy PacMan and Ghost distances. 
+         /// </summary>
+         /// <param name="visibleEnemyAgents">List of the visible enemies. </param>
         /// <param name="enemyGhostDistance">Distance to closest visible enemy ghost. </param>
         /// <param name="enemyPacManDistance">Distance to closest visible enemy Pac Man. </param>
         private void GetClosestEnemies(List<PacManAgentManager> visibleEnemyAgents, 
@@ -841,12 +859,12 @@ namespace PacMan.Agent
                 _attackerThreatRetreatActive = !reachedSafeAttackAnchor && ghostInsideExitRange;
             }
 
-            bool ghostNearby = _attackerThreatRetreatActive;
-            Vector3 capsuleTarget = Vector3.zero;
-            bool shouldRushPowerCapsule =
-                !isPowered &&
-                timeRemaining <= lateGameCapsuleRushSeconds &&
-                TryGetClosestObjectPosition(myPos, activeEnemyCapsules, out capsuleTarget);
+             bool ghostNearby = _attackerThreatRetreatActive;
+             Vector3 capsuleTarget = Vector3.zero;
+             bool shouldRushPowerCapsule =
+                 !isPowered &&
+                 timeRemaining <= GetCapsuleRushTimeThreshold(activeEnemyCapsules) &&
+                 TryGetClosestObjectPosition(myPos, activeEnemyCapsules, out capsuleTarget);
 
             bool returnHomeReleasedDeepInsideOwnSide =
                 carriedFoodCount == 0 &&
