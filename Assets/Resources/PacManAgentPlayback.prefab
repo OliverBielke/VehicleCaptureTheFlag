@@ -145,7 +145,9 @@ MonoBehaviour:
   defenderSafeMiddleEnemyClearance: 2.5
   defenderLaneFoodPileHoldThreshold: 4
   defenderLaneFoodPileRadius: 3
+  defenderLaneFoodPileChainRadius: 1.5
   defenderLaneFoodPileIntruderRadius: 2.5
+  drawDefenderLaneFoodPileRadius: 1
   minStepsBetweenRepaths: 12
   retargetDistanceThreshold: 0.75
   targetLockDistance: 0.35
