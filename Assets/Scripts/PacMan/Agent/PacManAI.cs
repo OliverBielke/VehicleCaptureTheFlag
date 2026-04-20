@@ -64,6 +64,7 @@ namespace PacMan.Agent
          [SerializeField] private int poweredReturnFoodThreshold = 6;
         [SerializeField] private float nextCapsuleGrabLeadTime = 0.15f;
         [SerializeField] private float consumedCapsuleContactDistance = 0.25f;
+        private float _cachedCapsuleRushTimeThreshold = 25f;
         [Header("Retreat")]
         [SerializeField] private float returnHomeOwnSideOffset = 1.2f;
         [SerializeField] private float returnHomeReleaseOwnSideDistance = 1.2f;
@@ -206,6 +207,7 @@ namespace PacMan.Agent
             if (EnemyTrackerManager.Instance != null) EnemyTrackerManager.Instance.SetObstacleMap(_obstacleMap);
             if (RoleAssigner.Instance != null) RoleAssigner.Instance.SetObstacleMap(_obstacleMap);
             CacheFoodSpawnInfo();
+            _cachedCapsuleRushTimeThreshold = CalculateCapsuleRushTimeThreshold(GetActiveEnemyCapsules());
             
             
             // All of the calls below should also work in here. Report it as a bug if you find that some part of the observations is inaccessible during init.
@@ -503,14 +505,14 @@ namespace PacMan.Agent
              return timeRemaining <= deadline;
          }
 
-         /// <summary>
-         /// Calculates the time threshold for rushing power capsules in late game.
-         /// Formula: baseTime + (numExtraPowerPills * extraTime)
-         /// For example: 25 + (2 * 20) = 64 seconds for 2 available power pills
-         /// </summary>
-         /// <param name="activeEnemyCapsules">List of available enemy capsules to count.</param>
-         /// <returns>The calculated capsule rush time threshold in seconds.</returns>
-         private float GetCapsuleRushTimeThreshold(List<GameObject> activeEnemyCapsules)
+          /// <summary>
+          /// Calculates the time threshold for rushing power capsules in late game.
+          /// Formula: baseTime + (numExtraPowerPills * extraTime)
+          /// For example: 25 + (2 * 20) = 64 seconds for 2 available power pills
+          /// </summary>
+          /// <param name="activeEnemyCapsules">List of available enemy capsules to count.</param>
+          /// <returns>The calculated capsule rush time threshold in seconds.</returns>
+          private float CalculateCapsuleRushTimeThreshold(List<GameObject> activeEnemyCapsules)
          {
              int numCapsules = activeEnemyCapsules != null ? activeEnemyCapsules.Count : 0;
              // Base time + (extra capsules beyond first) * extra time per capsule
@@ -931,7 +933,7 @@ namespace PacMan.Agent
              Vector3 capsuleTarget = Vector3.zero;
              bool shouldRushPowerCapsule =
                  !isPowered &&
-                 timeRemaining <= GetCapsuleRushTimeThreshold(activeEnemyCapsules) &&
+                   timeRemaining <= _cachedCapsuleRushTimeThreshold &&
                  TryGetClosestObjectPosition(myPos, activeEnemyCapsules, out capsuleTarget);
 
             bool returnHomeReleasedDeepInsideOwnSide =
