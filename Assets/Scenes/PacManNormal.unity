@@ -123229,7 +123229,7 @@ MonoBehaviour:
   path: 1
   vO: 0
   enemyLocalization: 0
-  agentHud: 0
+  agentHud: 1
 --- !u!4 &1859348695
 Transform:
   m_ObjectHideFlags: 0

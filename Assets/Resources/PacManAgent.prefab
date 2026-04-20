@@ -152,6 +152,7 @@ MonoBehaviour:
   defenderSafeMiddleDepth: 2
   defenderSafeMiddleLanePadding: 0.4
   defenderSafeMiddleEnemyClearance: 4
+  scaredCounterRaidTargetGraceSteps: 12
   defenderLaneFoodPileHoldThreshold: 15
   defenderLaneFoodPileRadius: 7
   defenderLaneFoodPileChainRadius: 2

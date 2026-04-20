@@ -94,6 +94,7 @@ namespace PacMan.Agent
         [SerializeField] private float defenderSafeMiddleDepth = 2.0f;
         [SerializeField] private float defenderSafeMiddleLanePadding = 0.4f;
         [SerializeField] private float defenderSafeMiddleEnemyClearance = 4f;
+        [SerializeField] private int scaredCounterRaidTargetGraceSteps = 12;
         [Header("Defense Lane Guard")]
         [SerializeField] private int defenderLaneFoodPileHoldThreshold = 15;
         [SerializeField] private float defenderLaneFoodPileRadius = 7f;
@@ -150,6 +151,7 @@ namespace PacMan.Agent
         private bool _hasLatchedHomeTarget = false;
         private Vector3 _latchedHomeTarget = Vector3.zero;
         private int _lastHomeTargetRefreshStep = -99999;
+        private int _lastScaredCounterRaidTargetStep = -99999;
         private int _teammateYieldBackoffUntilStep = -1;
         private int _teammateYieldObstacleUntilStep = -1;
         private int _teammateYieldRetriggerBlockedUntilStep = -1;
@@ -260,6 +262,7 @@ namespace PacMan.Agent
                     _lastPlannedUnsafeCellCount = 0;
                     _hasLatchedHomeTarget = false;
                     _lastHomeTargetRefreshStep = -99999;
+                    _lastScaredCounterRaidTargetStep = -99999;
                     _teammateYieldBackoffUntilStep = -1;
                     _teammateYieldObstacleUntilStep = -1;
                     _teammateYieldRetriggerBlockedUntilStep = -1;
@@ -760,9 +763,16 @@ namespace PacMan.Agent
                     if (selectedFoodTarget != null)
                     {
                         SetCurrentFoodTarget(selectedFoodTarget);
+                        _lastScaredCounterRaidTargetStep = _agent != null ? _agent.GetStepsSinceMatchStart() : 0;
                         bb.shouldLootWhilePowered = true;
                         bb.enemyPillTargetPosition = selectedFoodTarget.transform.localPosition;
                         bb.debugReason = selectedFoodReason;
+                    }
+                    else if (TryGetCommittedScaredCounterRaidTarget(activeFood, out var committedScaredFoodTarget))
+                    {
+                        bb.shouldLootWhilePowered = true;
+                        bb.enemyPillTargetPosition = committedScaredFoodTarget.transform.localPosition;
+                        bb.debugReason = "Scared counter-raid (committed pill)";
                     }
                     else if (TryGetSafestFoodPosition(myPos, activeFood, out var fallbackScaredFoodTarget))
                     {
@@ -774,6 +784,7 @@ namespace PacMan.Agent
                     else
                     {
                         SetCurrentFoodTarget(null);
+                        _lastScaredCounterRaidTargetStep = -99999;
                         bb.shouldReturnHome = true;
                         bb.debugReason = "Scared with no enemy pill target";
                     }
@@ -1561,6 +1572,27 @@ namespace PacMan.Agent
         private void SetCurrentFoodTarget(GameObject foodTarget)
         {
             _currentFoodTarget = foodTarget != null && foodTarget.activeSelf ? foodTarget : null;
+        }
+
+        private bool TryGetCommittedScaredCounterRaidTarget(List<GameObject> activeFood, out GameObject target)
+        {
+            target = null;
+
+            if (_currentFoodTarget == null ||
+                !_currentFoodTarget.activeSelf ||
+                activeFood == null ||
+                !activeFood.Contains(_currentFoodTarget))
+            {
+                return false;
+            }
+
+            int currentStep = _agent != null ? _agent.GetStepsSinceMatchStart() : 0;
+            int graceSteps = Mathf.Max(0, scaredCounterRaidTargetGraceSteps);
+            if (currentStep - _lastScaredCounterRaidTargetStep > graceSteps)
+                return false;
+
+            target = _currentFoodTarget;
+            return true;
         }
 
         private void RegisterUnsafeFoodRetarget()
