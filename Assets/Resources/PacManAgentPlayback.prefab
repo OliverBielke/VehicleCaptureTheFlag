@@ -130,18 +130,19 @@ MonoBehaviour:
   consumedCapsuleContactDistance: 0.25
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
-  attackerGhostDangerStartFoodThreshold: 3
+  attackerGhostDangerStartFoodThreshold: 1
   attackerForcedReturnFoodThreshold: 6
   lateGameReturnHomeBaseSeconds: 20
   lateGameReturnHomeBufferSeconds: 6
   lateGameReturnHomeHorizontalSpeed: 2.34
   friendlyCapsuleObstacleInflation: 0.7
   capsuleGoalIgnoreRadius: 0.6
-  baseGhostDangerDistance: 0
+  baseGhostDangerDistance: 1
   maxGhostDangerDistance: 5
   ghostDangerHysteresisDistance: 1
   returnHomeLaneDangerSampleCount: 8
   returnHomeRepathIntervalSteps: 8
+  returnHomeExitSwitchSafetyMargin: 8
   voronoiPathDangerPenaltyMultiplier: 30
   defenderPurePursuitSwitchDistance: 2
   defenderMirrorEnemySideDepth: 2

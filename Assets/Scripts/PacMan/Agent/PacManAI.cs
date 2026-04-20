@@ -79,6 +79,7 @@ namespace PacMan.Agent
         [SerializeField] private float ghostDangerHysteresisDistance = 1.0f;
         [SerializeField] private int returnHomeLaneDangerSampleCount = 8;
         [SerializeField] private int returnHomeRepathIntervalSteps = 8;
+        [SerializeField] private float returnHomeExitSwitchSafetyMargin = 8f;
         [SerializeField] private float voronoiPathDangerPenaltyMultiplier = 30f;
         [SerializeField] private float defenderPurePursuitSwitchDistance = 2f;
         [Header("Voronoi Safety")]
@@ -147,6 +148,7 @@ namespace PacMan.Agent
         private int _foodTargetUnsafeRetargetBlockedUntilStep = -99999;
         private bool _hasLatchedHomeTarget = false;
         private Vector3 _latchedHomeTarget = Vector3.zero;
+        private int _lastHomeTargetRefreshStep = -99999;
         private int _teammateYieldBackoffUntilStep = -1;
         private int _teammateYieldObstacleUntilStep = -1;
         private int _teammateYieldRetriggerBlockedUntilStep = -1;
@@ -255,6 +257,7 @@ namespace PacMan.Agent
                     _attackerRegroupAfterReturnHome = false;
                     _lastPlannedUnsafeCellCount = 0;
                     _hasLatchedHomeTarget = false;
+                    _lastHomeTargetRefreshStep = -99999;
                     _teammateYieldBackoffUntilStep = -1;
                     _teammateYieldObstacleUntilStep = -1;
                     _teammateYieldRetriggerBlockedUntilStep = -1;
@@ -982,7 +985,10 @@ namespace PacMan.Agent
                 shouldReturnHomeLateGame;
             bb.shouldReturnHomeLateGame = shouldReturnHomeLateGame;
             if (!bb.shouldReturnHome)
+            {
                 _hasLatchedHomeTarget = false;
+                _lastHomeTargetRefreshStep = -99999;
+            }
 
             bb.homeTargetPosition = homeTarget;
             GameObject selectedFoodTarget = GetSafestFoodTarget(activeFood, GetPreferredFoodTarget(activeFood, attackAssignment?.FoodTarget));
@@ -1201,54 +1207,12 @@ namespace PacMan.Agent
             return anchor;
         }
 
-        private List<Vector3> GetAttackerDefendedHomePoints()
-        {
-            if (RoleAssigner.Instance == null || _middleInfo.Lanes == null || _middleInfo.Lanes.Count == 0)
-                return null;
-
-            Team myTeam = TeamAssignmentUtil.CheckTeam(gameObject);
-            bool isBlue = myTeam == Team.Blue;
-            var defenders = RoleAssigner.Instance
-                .GetRegisteredAgentsForTeam(myTeam)
-                .Where(agent =>
-                    agent != null &&
-                    agent != this &&
-                    agent.AssignedRole == StaticRole.Defend &&
-                    agent.HasDefenseAnchor)
-                .ToList();
-
-            if (defenders.Count == 0)
-                return null;
-
-            var points = new List<Vector3>();
-            var usedLaneIds = new HashSet<int>();
-
-            foreach (var defender in defenders)
-            {
-                var lane = MapMiddleAnalyzer.GetClosestLane(defender.DefenseAnchor, _middleInfo, majorOnly: false);
-                if (lane == null || !usedLaneIds.Add(lane.Id))
-                    continue;
-
-                points.Add(isBlue ? lane.LeftCenterLocal : lane.RightCenterLocal);
-            }
-
-            return points.Count > 0 ? points : null;
-        }
-
         private Vector3 GetSafestHomePoint()
         {
             bool isBlue = TeamAssignmentUtil.CheckTeam(gameObject) == Team.Blue;
-            List<Vector3> homePoints =
-                _assignedRole == StaticRole.Attack
-                    ? GetAttackerDefendedHomePoints()
-                    : null;
-
-            if (homePoints == null || homePoints.Count == 0)
-            {
-                homePoints = isBlue
-                    ? _middleInfo.MiddleLeftLocalPositions
-                    : _middleInfo.MiddleRightLocalPositions;
-            }
+            List<Vector3> homePoints = isBlue
+                ? _middleInfo.MiddleLeftLocalPositions
+                : _middleInfo.MiddleRightLocalPositions;
 
             if (homePoints == null || homePoints.Count == 0)
             {
@@ -1327,14 +1291,52 @@ namespace PacMan.Agent
         private Vector3 GetStableHomeTarget(bool shouldReturnHome)
         {
             if (!shouldReturnHome)
+            {
+                _hasLatchedHomeTarget = false;
+                _lastHomeTargetRefreshStep = -99999;
                 return GetSafestHomePoint();
+            }
 
-            if (_hasLatchedHomeTarget)
-                return _latchedHomeTarget;
+            int currentStep = _agent != null ? _agent.GetStepsSinceMatchStart() : 0;
+            int refreshInterval = Mathf.Max(1, returnHomeRepathIntervalSteps);
+            bool shouldRefreshHomeTarget =
+                !_hasLatchedHomeTarget ||
+                (currentStep - _lastHomeTargetRefreshStep) >= refreshInterval;
 
-            _latchedHomeTarget = GetSafestHomePoint();
-            _hasLatchedHomeTarget = true;
+            if (shouldRefreshHomeTarget)
+            {
+                Vector3 refreshedHomeTarget = GetSafestHomePoint();
+                if (!_hasLatchedHomeTarget || ShouldSwitchReturnHomeTarget(refreshedHomeTarget))
+                {
+                    _latchedHomeTarget = refreshedHomeTarget;
+                }
+
+                _hasLatchedHomeTarget = true;
+                _lastHomeTargetRefreshStep = currentStep;
+            }
+
             return _latchedHomeTarget;
+        }
+
+        private bool ShouldSwitchReturnHomeTarget(Vector3 candidateHomeTarget)
+        {
+            if (!_hasLatchedHomeTarget)
+                return true;
+
+            if (Vector3.Distance(_latchedHomeTarget, candidateHomeTarget) <= targetLockDistance)
+                return false;
+
+            Vector3 currentPos = transform.localPosition;
+            var trackedEnemies = GetTrackedEnemies()
+                .Where(enemy => enemy != null && enemy.HasPosition)
+                .Select(enemy => enemy.Position)
+                .ToList();
+
+            float currentScore = GetReturnHomeLaneSafetyScore(currentPos, _latchedHomeTarget, trackedEnemies);
+            float candidateScore = GetReturnHomeLaneSafetyScore(currentPos, candidateHomeTarget, trackedEnemies);
+            float requiredImprovement = Mathf.Max(0f, returnHomeExitSwitchSafetyMargin);
+
+            return candidateScore + requiredImprovement < currentScore;
         }
 
         private List<GameObject> GetActiveEnemyCapsules()
