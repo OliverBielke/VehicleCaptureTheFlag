@@ -523,6 +523,35 @@ namespace PacMan.Agent
          }
 
          /// <summary>
+         /// Checks whether the agent has enough time to reach a power capsule with a buffer for other agents.
+         /// Uses Euclidean distance to estimate travel time at a typical movement speed.
+         /// The agent needs enough time to: travel to capsule + buffer time for other agents to use the power-up.
+         /// </summary>
+         /// <param name="agentPos">Current local position of the agent.</param>
+         /// <param name="capsulePos">Local position of the target power capsule.</param>
+         /// <param name="timeRemaining">Seconds left in the match.</param>
+         /// <returns>True if the agent can reach the capsule with buffer time for other agents to use it; otherwise false.</returns>
+         private bool CanReachCapsuleWithBufferTime(Vector3 agentPos, Vector3 capsulePos, float timeRemaining)
+         {
+             // Use a conservative movement speed estimate (slower than max speed to account for pathfinding)
+             float estimatedSpeed = lateGameReturnHomeHorizontalSpeed;
+             
+             // Calculate Euclidean distance to capsule
+             float distanceToCapsule = Vector3.Distance(agentPos, capsulePos);
+             
+             // Time to reach and grab the capsule
+             float timeToReachCapsule = distanceToCapsule / Mathf.Max(0.01f, estimatedSpeed);
+             
+             // Buffer time for other agents to utilize the power capsule benefit
+             float bufferForOtherAgents = 3.0f;
+             
+             // Total time needed: reach capsule + buffer for team to use it
+             float totalTimeNeeded = timeToReachCapsule + bufferForOtherAgents;
+             
+             return (timeRemaining - totalTimeNeeded) >= 0f;
+         }
+ 
+         /// <summary>
          /// Get closest visible enemy PacMan and Ghost distances. 
          /// </summary>
          /// <param name="visibleEnemyAgents">List of the visible enemies. </param>
@@ -862,17 +891,36 @@ namespace PacMan.Agent
         {
             AttackerBlackboard bb = new AttackerBlackboard();
 
-            Vector3 myPos = transform.localPosition;
-            UpdateVoronoiData();
-            var trackedEnemies = GetTrackedEnemies();
-            var activeFood = _agent.GetFoodObjects().FindAll(f => f.activeSelf &&
-                                                TeamAssignmentUtil.CheckTeam(f) != TeamAssignmentUtil.CheckTeam(gameObject));
-            var activeEnemyCapsules = GetActiveEnemyCapsules();
-            float timeRemaining = _agent.GetTimeRemaining();
-            bool isPowered = _agent.IsPoweredUp();
-            float powerRemaining = Mathf.Max(0f, _agent.GetPowerRemainingDuration());
-            int carriedFoodCount = _agent.GetCarriedFoodCount();
-            bool shouldReturnHomeLateGame = ShouldReturnHomeLateGame(myPos, carriedFoodCount, timeRemaining, out bool canReachHomeInTime);
+             Vector3 myPos = transform.localPosition;
+             UpdateVoronoiData();
+             var trackedEnemies = GetTrackedEnemies();
+             var activeFood = _agent.GetFoodObjects().FindAll(f => f.activeSelf &&
+                                                 TeamAssignmentUtil.CheckTeam(f) != TeamAssignmentUtil.CheckTeam(gameObject));
+             var activeEnemyCapsules = GetActiveEnemyCapsules();
+             float timeRemaining = _agent.GetTimeRemaining();
+             bool isPowered = _agent.IsPoweredUp();
+             float powerRemaining = Mathf.Max(0f, _agent.GetPowerRemainingDuration());
+             int carriedFoodCount = _agent.GetCarriedFoodCount();
+             
+             // Calculate power capsule rush decision early so it can override late-game return home
+             Vector3 capsuleTarget = Vector3.zero;
+             bool shouldRushPowerCapsule =
+                 !isPowered &&
+                   timeRemaining <= _cachedCapsuleRushTimeThreshold &&
+                 TryGetClosestObjectPosition(myPos, activeEnemyCapsules, out capsuleTarget) &&
+                 CanReachCapsuleWithBufferTime(myPos, capsuleTarget, timeRemaining);
+             
+             // Don't return home due to time if we should rush the power capsule instead
+             bool shouldReturnHomeLateGame;
+             bool canReachHomeInTime = true;  // Default to true if we're rushing capsule
+             if (shouldRushPowerCapsule)
+             {
+                 shouldReturnHomeLateGame = false;
+             }
+             else
+             {
+                 shouldReturnHomeLateGame = ShouldReturnHomeLateGame(myPos, carriedFoodCount, timeRemaining, out canReachHomeInTime);
+             }
 
             float closestEnemyDist = float.MaxValue;
             TrackedEnemyInfo closestEnemy = null;
@@ -930,15 +978,10 @@ namespace PacMan.Agent
             }
 
              bool ghostNearby = _attackerThreatRetreatActive;
-             Vector3 capsuleTarget = Vector3.zero;
-             bool shouldRushPowerCapsule =
-                 !isPowered &&
-                   timeRemaining <= _cachedCapsuleRushTimeThreshold &&
-                 TryGetClosestObjectPosition(myPos, activeEnemyCapsules, out capsuleTarget);
-
-            bool returnHomeReleasedDeepInsideOwnSide =
-                carriedFoodCount == 0 &&
-                IsDeepEnoughInOwnTerritory(myPos, returnHomeReleaseOwnSideDistance);
+ 
+             bool returnHomeReleasedDeepInsideOwnSide =
+                 carriedFoodCount == 0 &&
+                 IsDeepEnoughInOwnTerritory(myPos, returnHomeReleaseOwnSideDistance);
 
             if (shouldRushPowerCapsule)
             {
