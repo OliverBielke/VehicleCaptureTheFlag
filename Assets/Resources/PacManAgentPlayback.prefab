@@ -99,8 +99,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1690c612a1b53a54bb78dd8e73a17d93, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  max_speed: 15
-  max_acceleration: 15
+  max_speed: 20
+  max_acceleration: 13
   collisionEnabled: 1
 --- !u!114 &-3328113813598124169
 MonoBehaviour:
@@ -131,7 +131,7 @@ MonoBehaviour:
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
   attackerGhostDangerStartFoodThreshold: 1
-  attackerForcedReturnFoodThreshold: 6
+  attackerForcedReturnFoodThreshold: 8
   lateGameReturnHomeBaseSeconds: 20
   lateGameReturnHomeBufferSeconds: 6
   lateGameReturnHomeHorizontalSpeed: 2.34
@@ -142,7 +142,7 @@ MonoBehaviour:
   ghostDangerHysteresisDistance: 1
   returnHomeLaneDangerSampleCount: 8
   returnHomeRepathIntervalSteps: 8
-  returnHomeExitSwitchSafetyMargin: 8
+  returnHomeExitSwitchSafetyMargin: 60
   voronoiPathDangerPenaltyMultiplier: 30
   defenderPurePursuitSwitchDistance: 2
   defenderMirrorEnemySideDepth: 2

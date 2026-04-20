@@ -132,7 +132,7 @@ MonoBehaviour:
   returnHomeOwnSideOffset: 1.2
   returnHomeReleaseOwnSideDistance: 1.2
   attackerGhostDangerStartFoodThreshold: 1
-  attackerForcedReturnFoodThreshold: 6
+  attackerForcedReturnFoodThreshold: 8
   lateGameReturnHomeBaseSeconds: 20
   lateGameReturnHomeBufferSeconds: 6
   lateGameReturnHomeHorizontalSpeed: 2.34
@@ -146,8 +146,8 @@ MonoBehaviour:
   returnHomeExitSwitchSafetyMargin: 60
   voronoiPathDangerPenaltyMultiplier: 30
   defenderPurePursuitSwitchDistance: 2
-  defenderMirrorEnemySideDepth: 2
-  defenderMirrorLanePadding: 0.5
+  defenderMirrorEnemySideDepth: 3
+  defenderMirrorLanePadding: 1
   defenderMirrorRepathIntervalSteps: 1
   defenderSafeMiddleDepth: 2
   defenderSafeMiddleLanePadding: 0.4
